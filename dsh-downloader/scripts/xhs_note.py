@@ -270,7 +270,9 @@ def parse_note(html, url, max_comments):
                     continue
                 if u.startswith("//"):
                     u = "https:" + u
+                fid = it.get("fileId") or ""
                 media.append({"kind": "image", "url": u,
+                              "orig": ("https://ci.xiaohongshu.com/" + fid) if fid else "",
                               "width": it.get("width"), "height": it.get("height")})
         except Exception:
             pass
@@ -361,6 +363,24 @@ def dl(url, dest, referer="https://www.xiaohongshu.com/"):
     with op.open(url, timeout=180) as r, open(dest, "wb") as f:
         shutil.copyfileobj(r, f)
     return os.path.getsize(dest)
+
+
+def fix_ext(dest):
+    """原图实际格式可能与 URL 推断的扩展名不符（fileId 无后缀），按魔数纠正。"""
+    try:
+        with open(dest, "rb") as f:
+            head = f.read(12)
+        real = None
+        if head.startswith(b"\xff\xd8"): real = ".jpg"
+        elif head.startswith(b"\x89PNG"): real = ".png"
+        elif head.startswith(b"RIFF") and head[8:12] == b"WEBP": real = ".webp"
+        if real and not dest.lower().endswith(real):
+            nd = dest.rsplit(".", 1)[0] + real
+            os.replace(dest, nd)
+            return nd
+    except Exception:
+        pass
+    return dest
 
 
 def media_filename(item, idx):
@@ -505,7 +525,17 @@ def main():
         for idx, item in enumerate(note["media"], 1):
             dest = os.path.join(target, media_filename(item, idx))
             try:
-                sz = dl(item["url"], dest)
+                # 图片优先无水印原图（ci.xiaohongshu.com/<fileId>，服务端不烧水印不压缩），失败回退 H5 展示图
+                if item.get("kind") == "image" and item.get("orig"):
+                    try:
+                        sz = dl(item["orig"], dest)
+                        item["source"] = "original"
+                        dest = fix_ext(dest)
+                    except Exception:
+                        sz = dl(item["url"], dest)
+                        item["source"] = "h5"
+                else:
+                    sz = dl(item["url"], dest)
                 item["file"] = os.path.basename(dest)
                 item["size"] = sz
                 unit = f"{sz/1024/1024:.1f} MB" if sz > 1024 * 1024 else f"{sz/1024:.0f} KB"
