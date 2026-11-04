@@ -2,6 +2,10 @@
 
 用 git 管理版本：每版一个 annotated tag（`v*`），提交说明写清动机。回滚：`git checkout <tag> -- dsh-downloader`。
 
+## v0.3.2 — 2026-11-04
+- feat(xhs)：图片优先下载**无水印原图**（`ci.xiaohongshu.com/<fileId>`，实测 5120×2880 / 张 2~5MB，与浏览器"另存为"同源）；原图失败自动回退 H5 展示图；按魔数纠正扩展名
+- fix(engine)：抖音链接失败时给出准确原因（抖音 Web 端要求浏览器 JS 签名，yt-dlp 稳定版/nightly 均无法取流），标记不可重试，不再自动重试空转
+
 ## v0.3.1 — 2026-11-04
 - fix(xhs)：`dl()` 无代理时 `build_opener(None)` 必抛 TypeError，导致小红书媒体 0 落盘却显示「已完成」——修复并让自检未通过时 `exit 2`，任务如实标红（实测 12 图全部落盘）
 - feat(engine)：`POST /api/reveal` 在系统文件管理器中打开所在文件夹（macOS `open`/`open -R`、Windows `explorer /select,`、Linux `xdg-open`），路径限 `downloadDir` 内
