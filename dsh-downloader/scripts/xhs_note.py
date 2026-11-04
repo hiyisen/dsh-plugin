@@ -353,11 +353,10 @@ def parse_note(html, url, max_comments):
 
 # ---------------------------------------------------------------- 下载
 def dl(url, dest, referer="https://www.xiaohongshu.com/"):
-    opener_kwargs = {}
+    handlers = []
     if XHS_PROXY:
-        opener_kwargs["http"] = XHS_PROXY
-        opener_kwargs["https"] = XHS_PROXY
-    op = urllib.request.build_opener(urllib.request.ProxyHandler(opener_kwargs) if XHS_PROXY else None)
+        handlers.append(urllib.request.ProxyHandler({"http": XHS_PROXY, "https": XHS_PROXY}))
+    op = urllib.request.build_opener(*handlers)  # 修上游 bug：原来无代理时 build_opener(None) 必抛 TypeError
     op.addheaders = [("User-Agent", XHS_UA), ("Referer", referer)]
     with op.open(url, timeout=180) as r, open(dest, "wb") as f:
         shutil.copyfileobj(r, f)
@@ -566,7 +565,7 @@ def main():
         for w in issues:
             print(f"    - {w}")
 
-    print(f"\n[✓] 完成：{target}")
+    print(f"\n{'[✓] 完成' if ok else '[✗] 未完成（完整性自检未通过）'}：{target}")
     print("\n===RESULT===")
     print(json.dumps({"engine": "xhs_note", "type": note["type"],
                       "dir": target, "title": note["title"],
@@ -577,6 +576,8 @@ def main():
                       "comments": len(note["comments"])},
                      ensure_ascii=False, indent=2))
     print("===END===")
+    if not ok:
+        sys.exit(2)  # 自检未通过：非零退出，让上层标记失败而非假完成
 
 
 if __name__ == "__main__":
