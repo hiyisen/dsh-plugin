@@ -2,6 +2,11 @@
 
 用 git 管理版本：每版一个 annotated tag（`v*`），提交说明写清动机。回滚：`git checkout <tag> -- dsh-downloader`。
 
+## v0.3.1 — 2026-11-04
+- fix(xhs)：`dl()` 无代理时 `build_opener(None)` 必抛 TypeError，导致小红书媒体 0 落盘却显示「已完成」——修复并让自检未通过时 `exit 2`，任务如实标红（实测 12 图全部落盘）
+- feat(engine)：`POST /api/reveal` 在系统文件管理器中打开所在文件夹（macOS `open`/`open -R`、Windows `explorer /select,`、Linux `xdg-open`），路径限 `downloadDir` 内
+- feat(ui)：目录链接与文件行接入 reveal（此前目录指向 api/file 恒 404）；全站去 emoji，换内联 SVG 图标（link/folder/warn/download/check/external，16px stroke currentColor，零外部依赖）
+
 ## v0.3.0 — 2026-11-04（本地 fork）
 - 项目改名 `dsh-dl-manager` → `dsh-downloader`（目录/包名/插件 id/路由 `/dsh-downloader/*` 全量同步；数据目录 `~/.dsh/dl-manager` 不变，零迁移）
 - UI 对齐 DSH 设计体系：接入 `--dsw-*` token（主题桥，随宿主明暗主题联动），配色/圆角/控件形态与 DSH 统一
