@@ -185,6 +185,9 @@ function classifyError(txt, code) {
   // YouTube 反爬：需登录 cookie，重试也没用
   if (/Sign in to confirm you'?re not a bot|confirm you'?re not a bot|not a bot/i.test(text))
     return { msg: 'YouTube 反爬：需登录 cookie 才能下（这台机器暂不支持）', retryable: false };
+  // 抖音：需要浏览器 JS 签名（a_bogus/UIFID），yt-dlp 稳定版与 nightly 均拿不到 detail JSON，重试无意义
+  if (/douyin\.com|Fresh cookies/i.test(text) && /douyin/i.test(text))
+    return { msg: '抖音反爬升级：需浏览器内 JS 签名才能取流，yt-dlp 当前下不动（非本机环境问题）', retryable: false };
   // 地区/会员/隐私：不会因重试变好
   if (/not available in your country|This (?:video|content) (?:is not|isn.t) available|members only|Premium only|private video|has been removed|Video unavailable|Geo-/i.test(text))
     return { msg: '该视频地区/会员/隐私受限，下不动', retryable: false };
