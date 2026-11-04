@@ -2,6 +2,11 @@
 
 用 git 管理版本：每版一个 annotated tag（`v*`），提交说明写清动机。回滚：`git checkout <tag> -- dsh-downloader`。
 
+## v0.3.3 — 2026-11-04
+- feat(douyin)：**抖音下载通道上线**。yt-dlp 已被抖音反爬（detail 接口要求浏览器内 JS 签名 a_bogus/UIFID），新增 `scripts/dy_bridge.js`：借 DSH 内置浏览器（ego）在页内 fetch 签名接口拿 CDN 直链，再 curl 直连下载。图文帖（图片+背景音乐）与视频帖均实测可下；目录按真实标题命名，产物含 meta.json/来源.txt
+- feat(engine)：`guessKind` 新增 douyin 类型；进度解析复用 yt-dlp 格式；完成校验允许图片/音频媒体；桥接失败给出「打开内置浏览器登录抖音」指路文案
+- feat(ui)：任务卡支持「抖音」徽标
+
 ## v0.3.2 — 2026-11-04
 - feat(xhs)：图片优先下载**无水印原图**（`ci.xiaohongshu.com/<fileId>`，实测 5120×2880 / 张 2~5MB，与浏览器"另存为"同源）；原图失败自动回退 H5 展示图；按魔数纠正扩展名
 - fix(engine)：抖音链接失败时给出准确原因（抖音 Web 端要求浏览器 JS 签名，yt-dlp 稳定版/nightly 均无法取流），标记不可重试，不再自动重试空转

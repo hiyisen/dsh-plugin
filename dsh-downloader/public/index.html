@@ -228,8 +228,8 @@ function cardEls(t){
       '<div class="acts"></div><div id="f-'+t.id+'"></div>';
     $('#list').prepend(card);
   }
-  card.querySelector('.badge.kind').textContent = t.kind==='xhs'?'小红书':t.kind==='hls'?'HLS':t.kind==='yt'?'通用':'未知';
-  card.querySelector('.nm').textContent = t.name || ({xhs:'小红书笔记', yt:'视频', hls:'HLS 视频', unknown:'下载'}[t.kind] || '下载');
+  card.querySelector('.badge.kind').textContent = t.kind==='xhs'?'小红书':t.kind==='hls'?'HLS':t.kind==='douyin'?'抖音':t.kind==='yt'?'通用':'未知';
+  card.querySelector('.nm').textContent = t.name || ({xhs:'小红书笔记', yt:'视频', hls:'HLS 视频', douyin:'抖音视频', unknown:'下载'}[t.kind] || '下载');
   const st = card.querySelector('.st'); st.className = 'st '+t.status; st.textContent = statusText(t);
   card.querySelector('.pct').textContent = t.progress+'%';
   card.querySelector('.prog > i').style.width = t.progress+'%';

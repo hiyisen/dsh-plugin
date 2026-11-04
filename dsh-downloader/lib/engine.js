@@ -96,7 +96,21 @@ function guessKind(url) {
   const u = firstUrl(url) || String(url || '');
   if (/\.m3u8(\?|$)/i.test(u)) return 'hls';
   if (/xiaohongshu\.com|xhslink\.cn|xiaohongshu\.cn/i.test(u)) return 'xhs';
-  return 'yt'; // 全平台兜底：bilibili / 抖音 / douyin / tiktok / 微博 / 快手 … yt-dlp 支持的一大堆
+  // 抖音：yt-dlp 已被反爬（detail 接口要求浏览器 JS 签名），走浏览器桥接脚本取流
+  if (/douyin\.com|iesdouyin/i.test(u)) return 'douyin';
+  return 'yt'; // 全平台兜底：bilibili / tiktok / 微博 / 快手 … yt-dlp 支持的一大堆
+}
+// ego-browser CLI（抖音桥接要在真实浏览器页内签名 fetch）；找不到就退回 yt-dlp 老路
+function findEgoCli() {
+  const cands = [
+    process.env.DLM_EGO_CLI,
+    // 部署形态：插件被软链进 profile/node_modules，同级 node_modules 里有 dsh-ego-browser；
+    // 但 _HERE 会被 Node 解析到仓库真实路径，所以同时兜底 profile 绝对路径。
+    path.join(_HERE, '..', '..', 'dsh-ego-browser', 'runtime', 'ego-linux', 'bin', 'ego-browser.mjs'),
+    path.join(os.homedir(), '.dsh', 'profiles', 'desktop', 'node_modules', 'dsh-ego-browser', 'runtime', 'ego-linux', 'bin', 'ego-browser.mjs'),
+  ].filter(Boolean);
+  for (const c of cands) { try { if (fs.existsSync(c)) return c; } catch {} }
+  return null;
 }
 // 判断链接是否国内站点（国内直连，不走代理）
 function isCnUrl(url) {
@@ -133,12 +147,12 @@ function parseProgress(log, kind) {
     if (/ffmpeg merging|转faststart/i.test(log)) return 96;
     if (/RE_EXIT=0/.test(log)) return 99;
   }
-  if (kind === 'yt') {
-    // yt-dlp: "[download]  12.3% of   50.00MiB at ..."
+  if (kind === 'yt' || kind === 'douyin') {
+    // yt-dlp / 抖音桥接（刻意同格式）: "[download]  12.3% of   50.00MiB at ..."
     const m = [...log.matchAll(/\[download\]\s+(\d+(?:\.\d+)?)%\s+of\s+\d+(?:\.\d+)?\s*(?:Gi?B|Mi?B|Ki?B)/g)];
     if (m.length) return Math.min(100, Number(m[m.length - 1][1]));
     if (/(?:has already been downloaded|Finished downloading|\[download\]\s+100%)/i.test(log)) return 100;
-    if (/\[download\]/i.test(log)) return 30;
+    if (/\[download\]|aweme id/i.test(log)) return 30;
     if (/Extracting|Parsing|正在解析|获取信息/i.test(log)) return 10;
   }
   if (/落盘目录：/.test(log)) return 99;
@@ -185,9 +199,12 @@ function classifyError(txt, code) {
   // YouTube 反爬：需登录 cookie，重试也没用
   if (/Sign in to confirm you'?re not a bot|confirm you'?re not a bot|not a bot/i.test(text))
     return { msg: 'YouTube 反爬：需登录 cookie 才能下（这台机器暂不支持）', retryable: false };
-  // 抖音：需要浏览器 JS 签名（a_bogus/UIFID），yt-dlp 稳定版与 nightly 均拿不到 detail JSON，重试无意义
+  // 抖音：桥接（浏览器签名）自身的失败——文案指路
+  if (/浏览器不可用|detail 接口未返回数据|找不到抖音作品 id/i.test(text))
+    return { msg: '抖音桥接失败：DSH 内置浏览器不可用或未登录抖音。在 DSH 里打开内置浏览器登录抖音后重试', retryable: false };
+  // 抖音：yt-dlp 老路（无 ego CLI 时的兜底）——detail 接口需浏览器 JS 签名，yt-dlp 拿不到
   if (/douyin\.com|Fresh cookies/i.test(text) && /douyin/i.test(text))
-    return { msg: '抖音反爬升级：需浏览器内 JS 签名才能取流，yt-dlp 当前下不动（非本机环境问题）', retryable: false };
+    return { msg: '抖音需浏览器签名取流（yt-dlp 下不动）。请确认 DSH 内置浏览器可用（插件自动走浏览器桥接）', retryable: false };
   // 地区/会员/隐私：不会因重试变好
   if (/not available in your country|This (?:video|content) (?:is not|isn.t) available|members only|Premium only|private video|has been removed|Video unavailable|Geo-/i.test(text))
     return { msg: '该视频地区/会员/隐私受限，下不动', retryable: false };
@@ -269,14 +286,29 @@ async function run(t) {
   // （yt-dlp 自己能解析 小红书/B站/抖音/快手/TikTok，包括 b23.tv 这类短链，不用我们操心）
   touch(t); save();
 
-  let cmd, args;
+  let cmd, args, extraEnv = null;
   const target = firstUrl(t.url) || t.url; // 兼容粘贴"分享文案"而非纯链接
   if (t.kind === 'xhs') {
     cmd = cfg.python3; args = [path.join(SCRIPTS, 'xhs_note.py'), target, '--out', cfg.downloadDir];
   } else if (t.kind === 'hls') {
     t.name = t.name || deriveName(t.url);
     cmd = 'bash'; args = [path.join(SCRIPTS, 'dl_hls.sh'), target, t.name, cfg.downloadDir];
-  } else { // yt —— 全平台兜底：bilibili / 抖音 / douyin / tiktok / 微博 / 快手 …
+  } else if (t.kind === 'douyin') {
+    // 抖音桥接：ego 浏览器页内签名 fetch + CDN 直连。找不到 ego CLI 时退回 yt-dlp（会失败但报错清晰）。
+    const egoCli = findEgoCli();
+    if (egoCli) {
+      t.name = (t.name || deriveName(t.url)).replace(/[\\/:*?"<>|\n\r\t]/g, '_').slice(0, 80) || 'video';
+      const outDir = path.join(cfg.downloadDir, t.name);
+      fs.mkdirSync(outDir, { recursive: true });
+      t.outDir = outDir;
+      cmd = process.execPath; args = [egoCli];
+      extraEnv = { DY_URL: target, DY_OUT: outDir };
+      fs.appendFileSync(log, `[dy] 走浏览器桥接（借 DSH 内置浏览器页内签名取流）\n`);
+    } else {
+      cmd = cfg.ytDlp; args = ['--no-warnings', '--newline', '-o', path.join(cfg.downloadDir, '%(title)s.%(ext)s'), target];
+      fs.appendFileSync(log, `[dy] 未找到 ego-browser CLI，退回 yt-dlp（大概率失败：抖音反爬需浏览器签名）\n`);
+    }
+  } else { // yt —— 全平台兜底：bilibili / tiktok / 微博 / 快手 …
     t.name = (t.name || deriveName(t.url)).replace(/[\\/:*?"<>|\n\r\t]/g, '_').slice(0, 80) || 'video';
     const outDir = path.join(cfg.downloadDir, t.name);
     fs.mkdirSync(outDir, { recursive: true });
@@ -285,7 +317,7 @@ async function run(t) {
       '-o', path.join(outDir, '%(title)s.%(ext)s'), '--print', 'after_move:filepath', target];
   }
   // 国内站点直连（不走代理）：更快，且 B站/抖音 的视频 CDN 经代理会卡死。外站仍走代理。
-  const childEnv = { ...process.env, PATH: (cfg.binPath ? cfg.binPath + ':' : '') + process.env.PATH, DLM_LOG: log };
+  const childEnv = { ...process.env, PATH: (cfg.binPath ? cfg.binPath + ':' : '') + process.env.PATH, DLM_LOG: log, ...(extraEnv || {}) };
   const cnDirect = (t.kind === 'xhs' || t.kind === 'hls') || (t.kind === 'yt' && isCnUrl(t.url));
   if (cnDirect) { for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy']) delete childEnv[k]; }
   childEnv.NO_PROXY = CN_NOPROXY + ',' + (process.env.NO_PROXY || '');
@@ -301,7 +333,11 @@ async function run(t) {
   } catch {}
   const fh = fs.openSync(log, 'a');
   // 直接把子进程 stdout/stderr 写进日志文件（用 fd，不经管道），避免 detached 子进程因管道缓冲被卡死
-  const child = spawn(cmd, args, { cwd: SCRIPTS, detached: true, env: childEnv, stdio: ['ignore', fh, fh] });
+  // 抖音桥接：ego CLI 从 stdin 读脚本（heredoc 模式），把 dy_bridge.js 作为 fd 0
+  let sfh = null;
+  if (t.kind === 'douyin' && cmd === process.execPath) sfh = fs.openSync(path.join(SCRIPTS, 'dy_bridge.js'), 'r');
+  const child = spawn(cmd, args, { cwd: SCRIPTS, detached: true, env: childEnv, stdio: [sfh == null ? 'ignore' : sfh, fh, fh] });
+  if (sfh != null) { try { fs.closeSync(sfh); } catch {} }
   child.unref();
   t.pid = child.pid;
   touch(t); save();
@@ -323,6 +359,11 @@ async function run(t) {
 
   if (code === 0) {
     let outDir = t.outDir || '';
+    // 抖音桥接会按真实标题重命名目录：以它打的「落盘目录：」为准
+    if (t.kind === 'douyin') {
+      const m = txt.match(/落盘目录：[ \t]*(.+)/);
+      if (m && fs.existsSync(m[1].trim())) { outDir = m[1].trim(); t.outDir = outDir; t.name = path.basename(outDir); }
+    }
     if (!outDir) {
       // 目录名可能含空格，必须取到行尾
       const m = txt.match(/落盘目录：[ \t]*(.+)/) || txt.match(/跳过：[ \t]*(.+)/) || txt.match(/\[完成\][ \t]+(\S+\.mp4)/);
@@ -348,7 +389,11 @@ async function run(t) {
     }
     t.files = t.outDir ? listFiles(t.outDir) : [];
     // yt 可能下到的是网页而非视频（short 链失效/需浏览器跳转），核实一下，避免假“完成”
-    if (t.kind === 'yt' && !t.files.some(f => /\.(mp4|webm|mkv|mov|flv|m4v)$/i.test(f.name))) {
+    // douyin：图文帖产物是图片+背景音乐，视频帖是 mp4/m4a——任何媒体文件都算成功
+    const mediaOk = (t.kind === 'douyin')
+      ? /\.(mp4|m4a|webm|mov|jpg|jpeg|png|webp)$/i
+      : /\.(mp4|webm|mkv|mov|flv|m4v)$/i;
+    if ((t.kind === 'yt' || t.kind === 'douyin') && !t.files.some(f => mediaOk.test(f.name))) {
       t.status = 'failed'; t.stage = '失败';
       t.error = '未解析出可下载视频（短链可能已失效或需浏览器跳转，请贴完整网址，如 bilibili.com/video/BV…）';
     } else {
