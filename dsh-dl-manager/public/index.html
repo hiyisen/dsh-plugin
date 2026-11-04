@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>下载管理器</title>
+<style>
+  :root{--bg:#0f1115;--card:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
+        --acc:#4c8dff;--ok:#34c98b;--warn:#f0a93b;--err:#ef5f5f;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;}
+  header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  .ver{font-size:11px;color:var(--dim);font-weight:400;margin-left:6px}
+  header .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  .wrap{padding:16px;max-width:900px;margin:0 auto}
+  .bar{display:flex;gap:8px;margin-bottom:16px}
+  .bar input{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);color:var(--fg);
+             border-radius:8px;padding:9px 11px;font-size:14px}
+  .bar input.name{flex:0 0 150px}
+  .bar button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 18px;
+              font-size:14px;cursor:pointer;white-space:nowrap}
+  .bar button:disabled{opacity:.5;cursor:default}
+  .task{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .badge{font-size:12px;padding:2px 8px;border-radius:20px;background:#232833;color:var(--dim)}
+  .badge.kind{background:#1d2a44;color:#8fb4ff}
+  .st{font-size:12px;padding:2px 8px;border-radius:20px}
+  .st.done{background:#12331f;color:var(--ok)} .st.downloading{background:#332b12;color:var(--warn)}
+  .st.failed{background:#3a1a1a;color:var(--err)} .st.queued{background:#232833;color:var(--dim)}
+  .st.stopped{background:#2a2233;color:#a99bc9}
+  .pct{margin-left:auto;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .prog{height:6px;background:#232833;border-radius:4px;margin:8px 0 6px;overflow:hidden}
+  .prog > i{display:block;height:100%;background:var(--acc);border-radius:4px;transition:width .4s}
+  .meta{font-size:12px;color:var(--dim);word-break:break-all}
+  .meta a{color:#7fb0ff;text-decoration:none}
+  .acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .acts button{background:#222733;color:var(--fg);border:1px solid var(--line);border-radius:6px;
+               padding:4px 10px;font-size:12px;cursor:pointer}
+  .acts button.danger{color:#ff9b9b;border-color:#4a2626}
+  .acts button:hover{border-color:var(--acc)}
+  .files{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  .files h4{margin:0 0 6px;font-size:12px;color:var(--dim);font-weight:500}
+  .files .item{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px dashed #222833}
+  .files .item:last-child{border-bottom:0}
+  .files .nm{font-size:12px;word-break:break-all;flex:1}
+  .files .sz{font-size:11px;color:var(--dim);white-space:nowrap}
+  .files video{width:100%;max-width:480px;height:auto;border-radius:6px;background:#000;margin-top:6px}
+  .files img{max-width:200px;border-radius:6px;margin-top:6px;cursor:pointer}
+  .txtpre{background:#0b0d11;border:1px solid var(--line);border-radius:6px;padding:8px;
+          font-size:12px;color:#cdd6e6;overflow:auto;max-height:320px;white-space:pre-wrap;word-break:break-all}
+  .err{color:var(--err);font-size:12px;margin-top:6px;white-space:pre-wrap}
+  .empty{color:var(--dim);text-align:center;padding:40px 0}
+  details summary{cursor:pointer;font-size:12px;color:var(--dim);margin-top:6px}
+  pre{background:#0b0d11;border:1px solid var(--line);border-radius:6px;padding:8px;
+      font-size:11px;color:#9fb0c9;overflow:auto;max-height:180px;white-space:pre-wrap}
+  .tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  .tabs button{background:var(--card);border:1px solid var(--line);color:var(--dim);border-radius:20px;padding:5px 12px;font-size:13px;cursor:pointer}
+  .tabs button.on{background:#1d2a44;color:#8fb4ff;border-color:#2d4a7a}
+  .tabs button .c{font-size:11px;opacity:.8;margin-left:3px}
+  .pager{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;color:var(--dim);font-size:13px}
+  .pager button{background:var(--card);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:4px 12px;cursor:pointer}
+  .pager button:disabled{opacity:.4;cursor:default}
+  .settings{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .settings h3{margin:0 0 14px;font-size:15px}
+  .form-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .form-row label{flex:0 0 140px;font-size:13px;color:var(--dim)}
+  .form-row input{flex:1;min-width:0;background:#0b0d11;border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:7px 10px;font-size:13px}
+  .settings .msg{margin-top:10px;font-size:12px;color:var(--ok)}
+  .settings button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 18px;font-size:14px;cursor:pointer;margin-top:6px}
+</style>
+</head>
+<body>
+<header><span class="dot"></span><h1>下载管理器</h1><span class="ver">__DLM_VERSION__</span>
+  <span class="badge" id="srv">—</span></header>
+<div class="wrap">
+  <div class="bar">
+    <input id="url" placeholder="粘贴网址：小红书 / B站 / 抖音 / 全网视频（m3u8 等）">
+    <input id="name" class="name" placeholder="名称(HLS必填)">
+    <button id="go">下载</button>
+  </div>
+  <div class="tabs" id="tabs">
+    <button data-tab="active" onclick="setTab('active')">下载中 <span class="c" id="c-active">0</span></button>
+    <button data-tab="done" onclick="setTab('done')">已完成 <span class="c" id="c-done">0</span></button>
+    <button data-tab="failed" onclick="setTab('failed')">失败 <span class="c" id="c-failed">0</span></button>
+    <button data-tab="stopped" onclick="setTab('stopped')">已停止 <span class="c" id="c-stopped">0</span></button>
+    <button data-tab="settings" onclick="setTab('settings')">设置</button>
+  </div>
+  <div id="list"></div>
+  <div class="pager" id="pager"></div>
+  <div class="settings" id="settings" style="display:none;">
+    <h3>下载管理器设置</h3>
+    <div class="form-row"><label>下载目录</label><input id="cfg-downloadDir" placeholder="/ai/下载"></div>
+    <div class="form-row"><label>临时目录</label><input id="cfg-tempDir" placeholder="（留空用默认）"></div>
+    <div class="form-row"><label>python3</label><input id="cfg-python3" placeholder="python3"></div>
+    <div class="form-row"><label>yt-dlp</label><input id="cfg-ytDlp" placeholder="yt-dlp"></div>
+    <div class="form-row"><label>ffmpeg</label><input id="cfg-ffmpeg" placeholder="ffmpeg"></div>
+    <div class="form-row"><label>ffprobe</label><input id="cfg-ffprobe" placeholder="ffprobe"></div>
+    <div class="form-row"><label>N_m3u8DL-RE</label><input id="cfg-re" placeholder="N_m3u8DL-RE"></div>
+    <div class="form-row"><label>工具 PATH 前缀</label><input id="cfg-binPath" placeholder="/data/tools/bin:/data/tools/m3u8re"></div>
+    <button onclick="saveConfig()">保存</button>
+    <div class="msg" id="cfg-msg"></div>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtSize = n => n > 1<<30 ? (n/(1<<30)).toFixed(2)+' GB' : n > 1<<20 ? (n/(1<<20)).toFixed(1)+' MB' : (n/1024|0)+' KB';
+const escPath = p => encodeURIComponent(p);
+const VIDEO = ['.mp4','.mov','.webm','.mkv'], IMG = ['.jpg','.jpeg','.png','.webp','.gif'], TXT = ['.txt','.json','.log','.srt','.vtt','.md','.csv'];
+
+// 数据通道走主程序代发（iframe 内部直接请求在本环境走不通，主程序能正常取数）
+let _reqId = 0; const _pending = new Map();
+window.addEventListener('message', e => {
+  const d = e.data; if (!d || d.type !== 'dlm-fetch-resp') return;
+  const p = _pending.get(d.id); if (p) { _pending.delete(d.id); p(d); }
+});
+function apiFetch(method, path, body) {
+  return new Promise((resolve, reject) => {
+    const id = ++_reqId;
+    const timer = setTimeout(() => {
+      if (_pending.has(id)) { _pending.delete(id); reject(new Error('代理未响应（主程序监听未加载？）')); }
+    }, 10000);
+    _pending.set(id, res => {
+      clearTimeout(timer);
+      if (res.error) return reject(new Error(res.error));
+      resolve({ ok: res.ok, status: res.status,
+        json: async () => JSON.parse(res.body || '{}'),
+        text: async () => res.body || '' });
+    });
+    parent.postMessage({ type: 'dlm-fetch', id, method, path,
+      headers: body != null ? { 'Content-Type': 'application/json' } : undefined,
+      body: body != null ? JSON.stringify(body) : undefined }, '*');
+  });
+}
+
+// ===== 设置：读写配置 =====
+async function loadConfig(){
+  try{
+    const r = await apiFetch('GET','api/config');
+    const j = await r.json();
+    const c = j.cfg || {};
+    ['downloadDir','tempDir','python3','ytDlp','ffmpeg','ffprobe','re','binPath'].forEach(k=>{
+      const el = document.getElementById('cfg-'+k);
+      if(el) el.value = c[k] || '';
+    });
+    $('#cfg-msg').textContent = '';
+  }catch(e){ $('#cfg-msg').textContent = '读取失败：'+e.message; }
+}
+async function saveConfig(){
+  const cfg = {};
+  ['downloadDir','tempDir','python3','ytDlp','ffmpeg','ffprobe','re','binPath'].forEach(k=>{
+    const el = document.getElementById('cfg-'+k);
+    if(el) cfg[k] = el.value.trim();
+  });
+  if(!cfg.downloadDir){ alert('下载目录不能为空'); return; }
+  try{
+    const r = await apiFetch('POST','api/config',{cfg});
+    const j = await r.json().catch(()=>({}));
+    if(r.ok && j.ok){ $('#cfg-msg').textContent = '已保存（立即生效）'; }
+    else { $('#cfg-msg').textContent = '保存失败：'+(j.error||('HTTP '+r.status)); }
+  }catch(e){ $('#cfg-msg').textContent = '保存失败：'+e.message; }
+}
+
+function statusText(t){
+  if(t.status==='done') return '完成';
+  if(t.status==='failed') return '失败';
+  if(t.status==='stopped') return '已停止';
+  if(t.status==='queued') return '排队中';
+  return (t.stage||'下载中');
+}
+function fmtTime(ts){
+  const d = new Date(ts||0);
+  if(!ts) return '';
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// 增量渲染：只更新卡片内容，不重建整块 DOM（保留已展开的「查看内容」）
+function cardEls(t){
+  let card = document.getElementById('task-'+t.id);
+  if(!card){
+    card = document.createElement('div');
+    card.className = 'task'; card.id = 'task-'+t.id;
+    card.innerHTML =
+      '<div class="row1"><span class="badge kind"></span><b class="nm"></b><span class="st"></span><span class="pct"></span></div>'+
+      '<div class="prog"><i></i></div>'+
+      '<div class="meta url"></div><div class="meta dir"></div><div class="err"></div><div class="meta spd"></div><div class="meta when"></div>'+
+      '<div class="acts"></div><div id="f-'+t.id+'"></div>';
+    $('#list').prepend(card);
+  }
+  card.querySelector('.badge.kind').textContent = t.kind==='xhs'?'小红书':t.kind==='hls'?'HLS':t.kind==='yt'?'通用':'未知';
+  card.querySelector('.nm').textContent = t.name || ({xhs:'小红书笔记', yt:'视频', hls:'HLS 视频', unknown:'下载'}[t.kind] || '下载');
+  const st = card.querySelector('.st'); st.className = 'st '+t.status; st.textContent = statusText(t);
+  card.querySelector('.pct').textContent = t.progress+'%';
+  card.querySelector('.prog > i').style.width = t.progress+'%';
+  card.querySelector('.url').textContent = '🔗 '+t.url;
+  card.querySelector('.dir').innerHTML = t.outDir ? `<a href="/dsh-dl-manager/api/file?path=${escPath(t.outDir)}" target="_blank">📁 ${esc(t.outDir)}</a>` : '';
+  const err = card.querySelector('.err');
+  if(t.error){ err.style.display=''; err.textContent='⚠ '+t.error; } else { err.style.display='none'; err.textContent=''; }
+  const spd = card.querySelector('.spd');
+  if(t.status==='downloading'){ spd.style.display=''; spd.textContent = '⬇ '+fmtSize(t.speed||0)+'/s · 已下载 '+fmtSize(t.downloaded||0)+(t.size?(' / '+fmtSize(t.size)):''); }
+  else if(t.status==='done'){ spd.style.display=''; spd.textContent = '✅ 共 '+fmtSize(t.size||t.downloaded||0); }
+  else { spd.style.display='none'; spd.textContent=''; }
+  const when = card.querySelector('.when');
+  when.textContent = t.status==='done' ? ('完成于 '+fmtTime(t.updatedAt)) : ('添加于 '+fmtTime(t.createdAt));
+  const running = t.status==='downloading'||t.status==='queued';
+  const btns = [
+    running ? `<button onclick="act('${t.id}','stop')">停止</button>` : '',
+    (t.status==='failed'||t.status==='stopped') ? `<button onclick="act('${t.id}','retry')">重试</button>` : '',
+    t.status==='done' ? `<button onclick="toggleFiles('${t.id}')">查看内容</button>` : '',
+    (t.status==='failed'||t.status==='stopped') ? `<button onclick="showLog('${t.id}')">看日志</button>` : '',
+    `<button class="danger" onclick="delTask('${t.id}')">删除记录</button>`,
+    `<button class="danger" onclick="delFiles('${t.id}')">连文件删除</button>`,
+  ].filter(Boolean).join('');
+  card.querySelector('.acts').innerHTML = btns;
+  return card;
+}
+
+// ===== 分类 + 分页 =====
+const state = { tab:'active', page:1, perPage:8, tasks:[], full:true };
+let _initTab = false;
+const TAB_LABEL = { active:'下载中', done:'已完成', failed:'失败', stopped:'已停止' };
+function byTab(t, tab){
+  if(tab==='active') return t.status==='downloading'||t.status==='queued';
+  if(tab==='done')   return t.status==='done';
+  if(tab==='failed') return t.status==='failed';
+  return t.status==='stopped';
+}
+function counts(){
+  const c={active:0,done:0,failed:0,stopped:0};
+  for(const t of state.tasks){
+    if(t.status==='downloading'||t.status==='queued') c.active++;
+    else if(t.status==='done') c.done++;
+    else if(t.status==='failed') c.failed++;
+    else if(t.status==='stopped') c.stopped++;
+  }
+  return c;
+}
+function visOf(tab){
+  return state.tasks.filter(t=>byTab(t,tab)).sort((a,b)=> String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+}
+function updateTabUI(){
+  const c = counts();
+  for(const tab of ['active','done','failed','stopped']){
+    const b = document.querySelector('.tabs button[data-tab="'+tab+'"]');
+    if(b){ const el=b.querySelector('.c'); if(el) el.textContent = c[tab]||0; b.classList.toggle('on', tab===state.tab); }
+  }
+  const sb = document.querySelector('.tabs button[data-tab="settings"]');
+  if(sb) sb.classList.toggle('on', state.tab==='settings');
+}
+function renderPager(){
+  const vis = visOf(state.tab);
+  const total = Math.max(1, Math.ceil(vis.length/state.perPage));
+  if(total<=1){ $('#pager').innerHTML=''; return; }
+  const p = state.page;
+  $('#pager').innerHTML =
+    '<button '+(p<=1?'disabled':'')+' onclick="setPage('+(p-1)+')">‹ 上一页</button>'+
+    '<span>第 '+p+' / '+total+' 页</span>'+
+    '<button '+(p>=total?'disabled':'')+' onclick="setPage('+(p+1)+')">下一页 ›</button>';
+}
+function showEmptyForTab(tab){
+  const msg = state.tasks.length===0 ? '还没有任务，粘贴一个网址开始。' : ((TAB_LABEL[tab]||'')+'：该分类下暂无任务');
+  $('#list').innerHTML = '<div class="empty">'+msg+'</div>';
+}
+function renderList(){
+  updateTabUI();
+  const vis = visOf(state.tab);
+  const total = Math.max(1, Math.ceil(vis.length/state.perPage));
+  if(state.page > total) state.page = total;
+  const items = vis.slice((state.page-1)*state.perPage, state.page*state.perPage);
+  const em = $('#list .empty');
+  if(state.full){ $('#list').innerHTML=''; state.full=false; }
+  else {
+    const ids = new Set(items.map(t=>t.id));
+    [...$('#list').children].forEach(c=>{ if(c.id&&c.id.startsWith('task-')){ const id=c.id.slice(5); if(!ids.has(id)) c.remove(); }});
+    if(em && items.length) em.remove();
+  }
+  if(!items.length){ showEmptyForTab(state.tab); }
+  else { items.slice().reverse().forEach(cardEls); items.forEach(t=>{ const c=document.getElementById('task-'+t.id); if(c) $('#list').appendChild(c); }); }
+  renderPager();
+}
+function setTab(tab){
+  state.tab=tab; state.page=1; state.full=true;
+  const settings = $('#settings'), list = $('#list'), pager = $('#pager');
+  if(tab==='settings'){
+    settings.style.display=''; list.style.display='none'; pager.style.display='none';
+    updateTabUI(); loadConfig(); return;
+  }
+  settings.style.display='none'; list.style.display=''; pager.style.display='';
+  renderList();
+}
+function setPage(p){ state.page=p; state.full=true; renderList(); }
+async function refresh(){
+  try{
+    const r = await apiFetch('GET','api/tasks'); const j = await r.json();
+    state.tasks = j.tasks||[];
+    if(!_initTab){ _initTab=true; const c=counts(); state.tab = c.active>0 ? 'active' : 'done'; state.full=true; }
+    if(state.tab!=='settings') renderList();
+    $('#srv').textContent = '服务正常 · ' + state.tasks.length + ' 个任务';
+  }catch(e){ $('#srv').textContent = '连接失败'; }
+}
+async function add(){
+  const url = $('#url').value.trim(), name = $('#name').value.trim();
+  if(!url) return;
+  if(/\.m3u8/i.test(url) && !name){ alert('HLS 直链需要填一个名称（比如 CAWB-063）'); $('#name').focus(); return; }
+  $('#go').disabled = true;
+  try{
+    const r = await apiFetch('POST','api/tasks',{url,name});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok) alert('提交失败：'+(j.error||('HTTP '+r.status)));
+    else if(j.task && state.tab==='active'){ const e=$('#list .empty'); if(e) e.remove(); state.full=false; cardEls(j.task); }
+  }catch(e){ alert('提交失败：'+e.message); }
+  $('#url').value=''; $('#name').value=''; $('#go').disabled=false;
+  refresh();
+}
+async function act(id, action){
+  await apiFetch('POST','api/tasks/'+id+'/action',{action});
+  refresh();
+}
+async function delTask(id){ if(confirm('只删除这条记录？文件会保留。')) act(id,'delete'); }
+async function delFiles(id){ if(confirm('⚠ 连文件一起删除？\n视频/图片会被真正删掉，找不回来！\n确定吗？')) act(id,'deleteFiles'); }
+
+async function toggleFiles(id){
+  const box = $('#f-'+id);
+  if(box.dataset.open){ box.innerHTML=''; box.dataset.open=''; return; }
+  box.dataset.open = '1';
+  const r = await apiFetch('GET','api/tasks/'+id); const t = (await r.json()).task;
+  if(!t.files || !t.files.length){ box.innerHTML = '<div class="files"><div class="meta">（没有文件）</div></div>'; return; }
+  const items = await Promise.all(t.files.map(async f=>{
+    const ext = (f.name.match(/\.[^.]+$/)||[''])[0].toLowerCase();
+    const full = (t.outDir.endsWith('/')?t.outDir:t.outDir+'/') + f.name;
+    const link = `/dsh-dl-manager/api/file?path=${escPath(full)}`;
+    let body='';
+    if(VIDEO.includes(ext)){
+      body = `<video controls preload="metadata" playsinline src="${link}"></video>`+
+             `<div class="meta"><a href="${link}" target="_blank">⤓ 新标签打开/下载</a></div>`;
+    } else if(IMG.includes(ext)){
+      body = `<a href="${link}" target="_blank"><img loading="lazy" src="${link}"></a>`;
+    } else if(TXT.includes(ext)){
+      let txt='（读取失败）'; try{ const tr=await apiFetch('GET','api/file?path='+escPath(full)); txt=await tr.text(); }catch(e){}
+      const shown = txt.length>40000 ? txt.slice(0,40000)+'\n…(已截断，点下方链接看完整)' : txt;
+      body = `<pre class="txtpre">${esc(shown)}</pre>`+
+             `<div class="meta"><a href="${link}" target="_blank">⤓ 新标签打开</a></div>`;
+    } else {
+      body = `<div class="meta"><a href="${link}" target="_blank">打开 ${esc(f.name)}</a></div>`;
+    }
+    return `<div class="item"><div class="nm">${body}</div><div class="sz">${fmtSize(f.size)}</div></div>`;
+  }));
+  box.innerHTML = '<div class="files"><h4>内容（'+t.files.length+' 个文件）</h4>' + items.join('') + '</div>';
+}
+async function showLog(id){
+  const box = $('#f-'+id);
+  if(box.dataset.log){ box.innerHTML=''; box.dataset.log=''; return; }
+  const r = await apiFetch('GET','api/log/'+id); const j = await r.json();
+  box.innerHTML = '<pre>'+esc(j.log||'（无日志）')+'</pre>';
+  box.dataset.log='1';
+}
+
+$('#go').onclick = add;
+$('#url').onkeydown = e => { if(e.key==='Enter') add(); };
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

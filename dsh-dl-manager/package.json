@@ -1,0 +1,25 @@
+{
+  "name": "dsh-dl-manager",
+  "version": "0.2.0",
+  "description": "下载管理器：左侧边栏面板。粘贴网址即可下载——小红书、B站/抖音/全网视频(m3u8 等)，可查看任务状态与进度、删除记录或连文件删除、展开查看内容并直接播放视频。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "license": "MIT"
+}

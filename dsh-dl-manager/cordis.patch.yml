@@ -1,0 +1,6 @@
+# dsh-dl-manager: 左侧边栏「下载管理器」面板。
+# 出现在 dsh.profile.bundles 时，host 侧 lib/index.js 挂同源路由 /dsh-dl-manager/，
+# 客户端 lib/client.js 注册左栏导航行 + main 面板（iframe 指向该路由）。
+- insert:
+    - id: dsh-dl-manager
+      name: 'dsh-dl-manager'
