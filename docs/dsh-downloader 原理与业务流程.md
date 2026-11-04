@@ -1,7 +1,7 @@
-# dsh-dl-manager 原理与业务流程
+# dsh-downloader 原理与业务流程
 
 > 版本 v0.2.0 · MIT 协议 · 2026-11-04 整理
-> 源码：`~/code/dsh-plugin/dsh-dl-manager/`（本机运行副本在 `~/.dsh/profiles/desktop/dsh-dl-manager/`）
+> 源码：`~/code/dsh-plugin/dsh-downloader/`（本机运行副本在 `~/.dsh/profiles/desktop/dsh-downloader/`）
 
 ## 一、它是什么
 
@@ -14,8 +14,8 @@ DSH（DeepSeek Harness）左侧栏的「下载管理器」面板插件：粘贴�
 ```
 ┌─ DSH 网关（宿主 Node 进程）────────────────────────────┐
 │  lib/index.js  宿主壳：webServer.register 挂前缀路由     │
-│    /dsh-dl-manager        → 返回 public/index.html      │
-│    /dsh-dl-manager/api/*  → engine.js handler           │
+│    /dsh-downloader        → 返回 public/index.html      │
+│    /dsh-downloader/api/*  → engine.js handler           │
 │  lib/engine.js 引擎：任务队列 + 子进程下载 + 状态解析     │
 │    └ spawn 子进程: yt-dlp / xhs_note.py / dl_hls.sh      │
 │         └ dl_hls.sh 内部再调 N_m3u8DL-RE + ffmpeg        │
@@ -30,7 +30,7 @@ DSH（DeepSeek Harness）左侧栏的「下载管理器」面板插件：粘贴�
 关键设计决策：
 
 1. **壳/引擎分离 + mtime 热加载**：`index.js` 只做路由注册（改动需重启网关）；全部业务逻辑在 `engine.js`，宿主壳按文件 mtime 判断，变了就 `import('engine.js?t=' + mtime)` 重新加载——改下载逻辑存盘即生效，不用重启。UI（index.html）与下载脚本（scripts/）每次请求/任务现读，天然热生效。
-2. **同源路由而非独立端口**：面板 iframe 直接 fetch `/dsh-dl-manager/...`，与 DSH 网关同源，鉴权走网关 cookie，无需 CORS 与 apiProxy。还有一处补丁：网关鉴权 cookie 是 SameSite=Strict，iframe 里的 fetch 带不上 → 面板 HTML 和 /api/tasks 响应里用同一 token 重发一份 SameSite=Lax 的 cookie，让面板轮询实时刷新。
+2. **同源路由而非独立端口**：面板 iframe 直接 fetch `/dsh-downloader/...`，与 DSH 网关同源，鉴权走网关 cookie，无需 CORS 与 apiProxy。还有一处补丁：网关鉴权 cookie 是 SameSite=Strict，iframe 里的 fetch 带不上 → 面板 HTML 和 /api/tasks 响应里用同一 token 重发一份 SameSite=Lax 的 cookie，让面板轮询实时刷新。
 3. **不自己解析网页，外包给成熟工具**：宿主只起进程 + 读日志。三条下载管线按 URL 特征路由：
    - URL 含 `.m3u8` → `bash scripts/dl_hls.sh`（内部 N_m3u8DL-RE 下载 + ffmpeg 合并转 faststart；已处理"PNG 头伪装 TS"分段）
    - 小红书域名 → `python3 scripts/xhs_note.py`（抓图/视频/正文/评论）
@@ -47,7 +47,7 @@ DSH（DeepSeek Harness）左侧栏的「下载管理器」面板插件：粘贴�
 
 | 文件 | 职责 | 改动生效方式 |
 |---|---|---|
-| lib/index.js | 宿主壳：注册 /dsh-dl-manager 前缀路由、注入 public/scripts 路径、按 mtime 热加载引擎 | 重启网关 |
+| lib/index.js | 宿主壳：注册 /dsh-downloader 前缀路由、注入 public/scripts 路径、按 mtime 热加载引擎 | 重启网关 |
 | lib/engine.js | 引擎（~600 行）：配置加载、任务队列、spawn 下载、日志解析进度/速度、错误分类重试、HTTP API | 存盘即热加载 |
 | lib/client.js | 客户端：左栏「下载」导航行 + 主面板（iframe 指向路由） | 重启网关 |
 | public/index.html | 面板 UI：分类标签/分页/设置页/播放 | 刷新即生效 |
@@ -59,7 +59,7 @@ DSH（DeepSeek Harness）左侧栏的「下载管理器」面板插件：粘贴�
 
 | 方法+路径 | 说明 |
 |---|---|
-| GET /dsh-dl-manager/ | 面板 HTML（注入版本号 + 重发 Lax 鉴权 cookie） |
+| GET /dsh-downloader/ | 面板 HTML（注入版本号 + 重发 Lax 鉴权 cookie） |
 | GET /api/tasks | 任务列表（顺带清理文件已删的 done 任务） |
 | POST /api/tasks | 新建 `{url, name?}`：抽取分享文案里的真实链接 → guessKind 分类 → 去重 → 入队 |
 | GET /api/tasks/:id | 单任务详情（含文件清单） |

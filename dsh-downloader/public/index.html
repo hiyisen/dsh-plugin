@@ -133,7 +133,7 @@ function apiFetch(method, path, body) {
   if (window.parent === window) {
     var init = { method: method, credentials: 'include' };
     if (body != null) { init.headers = { 'Content-Type': 'application/json' }; init.body = JSON.stringify(body); }
-    return fetch('/dsh-dl-manager/' + path, init);
+    return fetch('/dsh-downloader/' + path, init);
   }
   return new Promise((resolve, reject) => {
     const id = ++_reqId;
@@ -214,7 +214,7 @@ function cardEls(t){
   card.querySelector('.pct').textContent = t.progress+'%';
   card.querySelector('.prog > i').style.width = t.progress+'%';
   card.querySelector('.url').textContent = '🔗 '+t.url;
-  card.querySelector('.dir').innerHTML = t.outDir ? `<a href="/dsh-dl-manager/api/file?path=${escPath(t.outDir)}" target="_blank">📁 ${esc(t.outDir)}</a>` : '';
+  card.querySelector('.dir').innerHTML = t.outDir ? `<a href="/dsh-downloader/api/file?path=${escPath(t.outDir)}" target="_blank">📁 ${esc(t.outDir)}</a>` : '';
   const err = card.querySelector('.err');
   if(t.error){ err.style.display=''; err.textContent='⚠ '+t.error; } else { err.style.display='none'; err.textContent=''; }
   const spd = card.querySelector('.spd');
@@ -349,7 +349,7 @@ async function toggleFiles(id){
   const items = await Promise.all(t.files.map(async f=>{
     const ext = (f.name.match(/\.[^.]+$/)||[''])[0].toLowerCase();
     const full = (t.outDir.endsWith('/')?t.outDir:t.outDir+'/') + f.name;
-    const link = `/dsh-dl-manager/api/file?path=${escPath(full)}`;
+    const link = `/dsh-downloader/api/file?path=${escPath(full)}`;
     let body='';
     if(VIDEO.includes(ext)){
       body = `<video controls preload="metadata" playsinline src="${link}"></video>`+

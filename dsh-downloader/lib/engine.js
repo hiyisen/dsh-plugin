@@ -1,17 +1,17 @@
 /**
- * dsh-dl-manager —— 左栏「下载管理器」面板的 host 侧。
+ * dsh-downloader —— 左栏「下载管理器」面板的 host 侧。
  *
  * 做法照 dsh-node-flow：inject webServer，在同一个 web 服务上挂**同源**前缀路由
- * /dsh-dl-manager/（客户端 iframe 直接 fetch，不走 apiProxy）。
+ * /dsh-downloader/（客户端 iframe 直接 fetch，不走 apiProxy）。
  *
  * 路由：
- *   GET  /dsh-dl-manager/                 → 面板界面（iframe 内容）
- *   GET  /dsh-dl-manager/api/tasks       → 任务列表
- *   POST /dsh-dl-manager/api/tasks       → 新建任务 {url, name?}
- *   GET  /dsh-dl-manager/api/tasks/:id   → 任务详情（含文件清单）
- *   POST /dsh-dl-manager/api/tasks/:id/action → {action: delete|deleteFiles|retry|stop}
- *   GET  /dsh-dl-manager/api/log/:id     → 最近日志（排错用）
- *   GET  /dsh-dl-manager/api/file?path=  → 读文件（支持 Range，视频可直接播）
+ *   GET  /dsh-downloader/                 → 面板界面（iframe 内容）
+ *   GET  /dsh-downloader/api/tasks       → 任务列表
+ *   POST /dsh-downloader/api/tasks       → 新建任务 {url, name?}
+ *   GET  /dsh-downloader/api/tasks/:id   → 任务详情（含文件清单）
+ *   POST /dsh-downloader/api/tasks/:id/action → {action: delete|deleteFiles|retry|stop}
+ *   GET  /dsh-downloader/api/log/:id     → 最近日志（排错用）
+ *   GET  /dsh-downloader/api/file?path=  → 读文件（支持 Range，视频可直接播）
  *
  * 数据落在 /data/.dsh/dl-manager （docker 卷，重建容器不丢）。
  */
@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 // PUBLIC（面板 HTML 所在目录）由宿主壳通过 setAssets(dir) 注入，
 // 因为引擎文件位置（/data/.dsh/dl-manager/engine.js）与插件目录分离，不能按自身路径推算。
-let PUBLIC = '/data/.dsh/profiles/web/node_modules/dsh-dl-manager/public';
+let PUBLIC = '/data/.dsh/profiles/web/node_modules/dsh-downloader/public';
 export function setAssets(dir) { PUBLIC = dir; }
 
 // 版本号以 package.json 为准，面板在返回 HTML 时注入（单一来源）
@@ -38,7 +38,7 @@ const CONCURRENCY = 2;
 const MAX_AUTO_RETRY = 3; // CDN 断流 / 网络抖动这类错误自动续传重试次数，超出后交用户手动重试
 // 国内站点直连白名单：这些域名不走代理（更快，且 B站/抖音 视频 CDN 经代理会卡死）。外站仍走代理。
 const CN_NOPROXY = '.bilibili.com,bilibili.com,.xiaohongshu.com,xiaohongshu.com,xhslink.cn,.douyin.com,douyin.com,v.douyin.com,iesdouyin.com,.iqiyi.com,iqiyi.com,.youku.com,youku.com,.weibo.com,weibo.com,.kuaishou.com,kuaishou.com,.acfun.cn,acfun.cn,.toutiao.com,toutiao.com,.baidu.com,baidu.com';
-const PREFIX = '/dsh-dl-manager';
+const PREFIX = '/dsh-downloader';
 
 // 脚本目录（真正的下载逻辑：xhs_note.py / dl_hls.sh 等）由宿主壳通过 setScriptsDir 注入，
 // 默认退回到旧技能目录便于平滑过渡；独立打包后指向插件自带的 scripts/。

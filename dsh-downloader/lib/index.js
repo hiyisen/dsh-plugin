@@ -1,19 +1,19 @@
 /**
- * dsh-dl-manager —— 左栏「下载管理器」面板的 host 侧（极简壳）。
+ * dsh-downloader —— 左栏「下载管理器」面板的 host 侧（极简壳）。
  *
  * 设计要点：本文件只负责「注册路由 + 按需热加载引擎」，真正干活的逻辑在
  * /data/.dsh/dl-manager/engine.js。这样以后改下载引擎**不需要重启网关**——
  * 只要改 engine.js，下一次请求会自动重新加载（按文件 mtime 判断）。
  *
  * 路由（前缀，DSH 同源，客户端 iframe 直接 fetch，不走 apiProxy）：
- *   /dsh-dl-manager                → 面板界面
- *   /dsh-dl-manager/api/...        → 任务引擎（见 engine.js）
+ *   /dsh-downloader                → 面板界面
+ *   /dsh-downloader/api/...        → 任务引擎（见 engine.js）
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const name = 'dsh-dl-manager';
+export const name = 'dsh-downloader';
 export const inject = ['webServer'];
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -34,10 +34,10 @@ async function loadEngine() {
       engineMtime = st.mtimeMs;
       if (engine.setAssets) engine.setAssets(PUBLIC);
       if (engine.setScriptsDir) engine.setScriptsDir(SCRIPTS);
-      console.info('[dsh-dl-manager] engine 已加载/热更新 (mtime=' + st.mtimeMs + ')');
+      console.info('[dsh-downloader] engine 已加载/热更新 (mtime=' + st.mtimeMs + ')');
     }
   } catch (e) {
-    console.error('[dsh-dl-manager] engine 加载失败:', (e && e.message) || e);
+    console.error('[dsh-downloader] engine 加载失败:', (e && e.message) || e);
   }
   return engine;
 }
@@ -47,12 +47,12 @@ export function apply(ctx) {
   ctx.effect(() => {
     const disposers = [];
     loadEngine();
-    disposers.push(webServer.register({ kind: 'prefix', path: '/dsh-dl-manager', handler: async (req, res) => {
+    disposers.push(webServer.register({ kind: 'prefix', path: '/dsh-downloader', handler: async (req, res) => {
       const eng = await loadEngine();
       if (!eng || !eng.handler) { res.writeHead(500); res.end('engine 不可用'); return; }
       return eng.handler(req, res);
     }}));
-    console.info('[dsh-dl-manager] 已挂载 /dsh-dl-manager (lazy engine)');
+    console.info('[dsh-downloader] 已挂载 /dsh-downloader (lazy engine)');
     return () => { for (const d of disposers) { try { d(); } catch {} } };
   });
 }

@@ -1,19 +1,19 @@
-/* 客户端模块（dsh-dl-manager）—— 左栏「下载管理器」面板。
+/* 客户端模块（dsh-downloader）—— 左栏「下载管理器」面板。
  *
  * 手写 __ModuleLoader__ 格式（与构建产物一致），因此不需要打包步骤。
  * react 由运行时基线表提供（require("react")），不随包体携带。
  *
  * 注册两处 slot：
  *   sidebar.panellist → 左栏导航行（图标 + 名称「下载」）
- *   main             → 面板主体（iframe 指向同源路由 /dsh-dl-manager/）
+ *   main             → 面板主体（iframe 指向同源路由 /dsh-downloader/）
  */
 window.__ModuleLoader__.load({
-  id: "dsh-dl-manager",
+  id: "dsh-downloader",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
     var React = require("react");
-    var PANEL_ID = "dsh-dl-manager";
+    var PANEL_ID = "dsh-downloader";
     var inject = ["slots"];
 
     function PanelIcon() {
@@ -28,7 +28,7 @@ window.__ModuleLoader__.load({
 
     function PanelBody() {
       return React.createElement("iframe", {
-        src: "/dsh-dl-manager/",
+        src: "/dsh-downloader/",
         title: "资源下载",
         style: { width: "100%", height: "100%", border: "none", background: "transparent", display: "block" }
       });
@@ -93,7 +93,7 @@ window.__ModuleLoader__.load({
         try {
           var init = { method: d.method, credentials: 'include', headers: d.headers || {} };
           if (d.body != null) init.body = d.body;
-          var resp = await fetch('/dsh-dl-manager/' + d.path, init);
+          var resp = await fetch('/dsh-downloader/' + d.path, init);
           var body = await resp.text();
           if (e.source) e.source.postMessage({ type: 'dlm-fetch-resp', id: d.id, ok: resp.ok, status: resp.status, body: body }, '*');
         } catch (err) {
