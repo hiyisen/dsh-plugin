@@ -12,6 +12,7 @@
  *   POST /dsh-downloader/api/tasks/:id/action → {action: delete|deleteFiles|retry|stop}
  *   GET  /dsh-downloader/api/log/:id     → 最近日志（排错用）
  *   GET  /dsh-downloader/api/file?path=  → 读文件（支持 Range，视频可直接播）
+ *   POST /dsh-downloader/api/reveal      → 在系统文件管理器中打开 {path}（mac open / win explorer / linux xdg-open）
  *
  * 数据落在 /data/.dsh/dl-manager （docker 卷，重建容器不丢）。
  */
@@ -571,6 +572,23 @@ async function handler(request, response) {
       const f = logPath(m[1]);
       const txt = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').slice(-40).join('\n') : '';
       return send(response, 200, { log: txt });
+    }
+    if (sub === 'api/reveal' && request.method === 'POST') {
+      const body = await readBody(request);
+      const abs = sanitize(body.path);
+      if (!abs || !fs.existsSync(abs)) return send(response, 404, { error: '路径不存在' });
+      const isDir = fs.statSync(abs).isDirectory();
+      // 在系统文件管理器中打开：目录直接打开；文件则打开并选中。仅允许 downloadDir 内路径（sanitize 已校验）。
+      let cmd, args;
+      if (process.platform === 'darwin') { cmd = 'open'; args = isDir ? [abs] : ['-R', abs]; }
+      else if (process.platform === 'win32') { cmd = 'explorer'; args = isDir ? [abs] : ['/select,', abs]; }
+      else { cmd = 'xdg-open'; args = [isDir ? abs : path.dirname(abs)]; }
+      try {
+        const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+        child.on('error', () => {});
+        child.unref();
+        return send(response, 200, { ok: true });
+      } catch (e) { return send(response, 500, { error: String((e && e.message) || e) }); }
     }
     if (sub === 'api/file') {
       const abs = sanitize(q.get('path') || '');
