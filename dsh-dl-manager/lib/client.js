@@ -29,7 +29,7 @@ window.__ModuleLoader__.load({
     function PanelBody() {
       return React.createElement("iframe", {
         src: "/dsh-dl-manager/",
-        title: "下载管理器",
+        title: "资源下载",
         style: { width: "100%", height: "100%", border: "none", background: "transparent", display: "block" }
       });
     }
@@ -41,7 +41,7 @@ window.__ModuleLoader__.load({
           id: PANEL_ID,
           order: 60,
           label: function () {
-            return "下载";
+            return "资源下载";
           }
         }, PanelIcon);
       });
@@ -68,7 +68,28 @@ window.__ModuleLoader__.load({
       window.__DLM_PROXY__ = 1;
       window.addEventListener('message', async function (e) {
         var d = e.data;
-        if (!d || d.type !== 'dlm-fetch') return;
+        if (!d || !d.type) return;
+        if (d.type === 'dlm-theme') {
+          // 把宿主 DSH 设计 token 转给面板 iframe（CSS 变量不跨 iframe）
+          try {
+            var cs = getComputedStyle(document.body);
+            var g = function (n) { var v = cs.getPropertyValue(n); return v ? v.trim() : ''; };
+            var map = {
+              '--dsw-alias-bg-base': '--bg', '--dsw-alias-bg-layer-1': '--card', '--dsw-alias-bg-layer-2': '--card2',
+              '--dsw-alias-border-l2': '--line', '--dsw-alias-border-l4': '--line2',
+              '--dsw-alias-label-primary': '--fg', '--dsw-alias-label-tertiary': '--dim', '--dsw-alias-label-secondary': '--dim2',
+              '--dsw-static-deepseek-450': '--acc', '--dsw-static-green-500': '--ok',
+              '--dsw-static-amber-500': '--warn', '--dsw-static-red-400': '--err',
+              '--dsw-radius-md': '--r', '--dsw-radius-sm': '--r-sm',
+              '--dsw-alias-markdown-code-block': '--code'
+            };
+            var vars = {};
+            for (var src in map) { var v2 = g(src); if (v2) vars[map[src]] = v2; }
+            if (e.source) e.source.postMessage({ type: 'dlm-theme-resp', vars: vars }, '*');
+          } catch (err) {}
+          return;
+        }
+        if (d.type !== 'dlm-fetch') return;
         try {
           var init = { method: d.method, credentials: 'include', headers: d.headers || {} };
           if (d.body != null) init.body = d.body;
