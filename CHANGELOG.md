@@ -1,0 +1,14 @@
+# 更新日志
+
+用 git 管理版本：每版一个 annotated tag（`v*`），提交说明写清动机。回滚：`git checkout <tag> -- dsh-downloader`。
+
+## v0.3.0 — 2026-11-04（本地 fork）
+- 项目改名 `dsh-dl-manager` → `dsh-downloader`（目录/包名/插件 id/路由 `/dsh-downloader/*` 全量同步；数据目录 `~/.dsh/dl-manager` 不变，零迁移）
+- UI 对齐 DSH 设计体系：接入 `--dsw-*` token（主题桥，随宿主明暗主题联动），配色/圆角/控件形态与 DSH 统一
+- 面板显示名改为「资源下载」（左栏入口 + 面板标题）
+- 面板独立打开（脱离 iframe）时自动直连 API，方便浏览器 F12 调样式
+- 部署改为软链：`~/.dsh/profiles/desktop/dsh-downloader` → 本仓库（开发即部署，改完即生效）
+
+## v0.2.0（上游原始版本 + 本机适配）
+- 上游 dsh-dl-manager v0.2.0（MIT）源码引入
+- macOS 适配：engine.js 数据目录由 `/data/.dsh/dl-manager` 改为 `~/.dsh/dl-manager`
