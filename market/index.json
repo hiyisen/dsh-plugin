@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "title": { "en": "hiyisen's DSH plugins", "zh-cn": "hiyisen 的 DSH 插件" },
+  "description": { "en": "Self-hosted index for hiyisen/dsh-plugin.", "zh-cn": "hiyisen/dsh-plugin 自建插件索引。" },
+  "metadata": {
+    "categories": {
+      "media": { "title": { "en": "Media & download", "zh-cn": "媒体与下载" } }
+    }
+  },
+  "plugins": [
+    {
+      "name": "dsh-downloader",
+      "title": { "en": "Resource Downloader", "zh-cn": "资源下载" },
+      "description": {
+        "en": "Sidebar download panel: paste a link and go. Xiaohongshu notes (watermark-free originals), Douyin images/videos (in-page signed bridge), HLS/m3u8, and everything yt-dlp supports. Progress, preview, reveal-in-folder.",
+        "zh-cn": "左栏下载面板：粘贴链接即下。小红书图文（无水印原图）、抖音图文/视频（浏览器签名桥接）、HLS/m3u8 流媒体、yt-dlp 全平台兜底。带进度、在线预览、打开所在文件夹。"
+      },
+      "author": "hiyisen",
+      "homepage": "https://github.com/hiyisen/dsh-plugin",
+      "repository": { "url": "https://github.com/hiyisen/dsh-plugin", "directory": "dsh-downloader" },
+      "metadata": { "category": "media", "keywords": ["download", "yt-dlp", "xiaohongshu", "douyin", "hls"] },
+      "versions": [
+        {
+          "version": "0.3.3",
+          "publishTimestamp": 1793778816,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/hiyisen/dsh-plugin",
+            "commit": "4bfba8e2d1a91cc6297ebf230941f3bb77dba6a8",
+            "path": "dsh-downloader"
+          }
+        }
+      ]
+    }
+  ]
+}
