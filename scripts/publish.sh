@@ -34,5 +34,7 @@ EOF
 git add market/index.json
 git commit -m "chore(market): 索引追加 v$VER"
 git -c core.sshCommand="ssh -o BatchMode=yes" push github main
-echo "已推送。市场索引 URL（设置→插件市场添加）:"
-echo "  https://raw.githubusercontent.com/hiyisen/dsh-plugin/main/market/index.json"
+echo "已推送。市场索引 URL（设置→插件市场添加；优先 jsdelivr，raw 域名国内网络不稳定）:"
+echo "  https://cdn.jsdelivr.net/gh/hiyisen/dsh-plugin@main/market/index.json"
+echo "  （备选）https://raw.githubusercontent.com/hiyisen/dsh-plugin/main/market/index.json"
+echo "注意: jsdelivr 对 @main 有缓存，push 后如未生效等几分钟或改用 ?t= 时间戳强刷。"
