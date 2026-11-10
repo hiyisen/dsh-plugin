@@ -54,7 +54,7 @@ Therefore:
 
 - To **change behaviour**: change the TypeScript upstream, rebuild, carry the new `lib/client.js` / `lib/client.js.map` into this repository, and commit both;
 - **In production `lib/` is authoritative** — DSH loads `lib/client.js`, `src/` never runs;
-- **The specification is [`docs/dsh-turn-summary 行为规格.md`](../../docs/dsh-turn-summary%20行为规格.md)** (the single authoritative spec);
+- **The specification is [`docs/dsh-turn-summary 行为规格.md`](../docs/dsh-turn-summary%20行为规格.md)** (the single authoritative spec);
 - The suite contains a **drift guard**: `lib/client.js.map`'s embedded `sourcesContent` must be byte-identical to the `src/client/*` files on disk.
 
 ## Install
@@ -87,11 +87,13 @@ Additionally: a skill whose arguments cannot be parsed (invalid JSON, or longer 
 ## Development
 
 ```bash
-# zero-dependency regression suite (Node >= 18, no npm install)
+# zero-dependency regression suite (Node >= 18, no npm install); run from the repository root
 node --test "dsh-turn-summary/tests/*.test.mjs"
 # equivalent, from the repository root (Node >= 22 searches the cwd recursively):
 node --test
 ```
+
+> Node >= 22 treats positional arguments of `--test` as glob patterns and no longer recurses into directories, so `node --test dsh-turn-summary/tests/` (the Node 18/20 form) fails with `Cannot find module` on Node 22.
 
 The suite drives the **published `lib/client.js`** itself (fake `window.__ModuleLoader__`, a minimal React stand-in, a fake client context) rather than re-implementing the fold, so it guards the shipped bytes.
 

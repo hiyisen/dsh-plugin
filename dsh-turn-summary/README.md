@@ -54,7 +54,7 @@ dsh-turn-summary/
 
 - 要**改逻辑**：回上游改 TypeScript → 重新构建 → 把新的 `lib/client.js` / `lib/client.js.map` 搬运到本仓库 → 提交；
 - **线上以 `lib/` 为准**（DSH 加载的是 `lib/client.js`，`src/` 不参与运行）；
-- **语义以 [`docs/dsh-turn-summary 行为规格.md`](../../docs/dsh-turn-summary%20行为规格.md) 为准**（唯一权威规格）；
+- **语义以 [`docs/dsh-turn-summary 行为规格.md`](../docs/dsh-turn-summary%20行为规格.md) 为准**（唯一权威规格）；
 - 回归测试里有一条**漂移守卫**：比对 `lib/client.js.map` 内嵌的 `sourcesContent` 与 `src/client/*` 的磁盘字节——两者必须逐字节一致，否则说明源码与产物漂移了。
 
 ## 安装
@@ -87,11 +87,13 @@ ln -sfn ../dsh-turn-summary ~/.dsh/profiles/desktop/node_modules/dsh-turn-summar
 ## 开发
 
 ```bash
-# 零依赖回归测试（Node ≥ 18，无需 npm install）
+# 零依赖回归测试（Node ≥ 18，无需 npm install）；命令从仓库根执行
 node --test "dsh-turn-summary/tests/*.test.mjs"
 # 从仓库根直接跑（Node ≥ 22 会递归搜索当前目录）等价于：
 node --test
 ```
+
+> Node ≥ 22 的 `--test` 把位置参数当 glob 模式处理、不再递归目录，所以不要写成 `node --test dsh-turn-summary/tests/`（那是 Node 18/20 的写法，在 Node 22 上会报 `Cannot find module`）。
 
 测试直接驱动**真正被发布的 `lib/client.js`**（假 `window.__ModuleLoader__` + 最小 React 替身 + 假 client context），不重新实现折叠逻辑，因此能守住产物。
 
