@@ -4,7 +4,7 @@
 
 ## dsh-turn-summary v1.0.0 — 2026-11-10
 - feat：插件入合集仓库。自建插件市场新增「本轮摘要」条目（分类：可观测性），安装后每轮回复末尾固定显示一行「本轮 · skill: … ｜ 工具: …」
-- 行为规格与回归测试随插件入库（docs/dsh-turn-summary 行为规格.md、dsh-turn-summary/tests/，零依赖 node --test）
+- 行为规格与回归测试随插件入库（docs/dsh-turn-summary 原理与业务流程.md、dsh-turn-summary/tests/，零依赖 node --test）
 
 ## v0.3.3 — 2026-11-04
 - feat(douyin)：**抖音下载通道上线**。yt-dlp 已被抖音反爬（detail 接口要求浏览器内 JS 签名 a_bogus/UIFID），新增 `scripts/dy_bridge.js`：借 DSH 内置浏览器（ego）在页内 fetch 签名接口拿 CDN 直链，再 curl 直连下载。图文帖（图片+背景音乐）与视频帖均实测可下；目录按真实标题命名，产物含 meta.json/来源.txt

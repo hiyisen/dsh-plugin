@@ -54,7 +54,7 @@ Therefore:
 
 - To **change behaviour**: change the TypeScript upstream, rebuild, carry the new `lib/client.js` / `lib/client.js.map` into this repository, and commit both;
 - **In production `lib/` is authoritative** — DSH loads `lib/client.js`, `src/` never runs;
-- **The specification is [`docs/dsh-turn-summary 行为规格.md`](../docs/dsh-turn-summary%20行为规格.md)** (the single authoritative spec);
+- **The specification is [`docs/dsh-turn-summary 原理与业务流程.md`](../docs/dsh-turn-summary%20原理与业务流程.md)** (the single authoritative spec);
 - The suite contains a **drift guard**: `lib/client.js.map`'s embedded `sourcesContent` must be byte-identical to the `src/client/*` files on disk.
 
 ## Install

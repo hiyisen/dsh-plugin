@@ -1,7 +1,8 @@
-# dsh-turn-summary 行为规格
+# dsh-turn-summary 原理与业务流程
 
 > **唯一权威规格。** 本插件的线上行为以此文为准；`lib/client.js` 是它的实现，`dsh-turn-summary/tests/` 是它的可执行副本。
 > 实现出处：`dsh-turn-summary/src/client/`（上游 `deepseek-ai/deepseek-harness` 的 `packages/client/ui-turn-summary` 逐字节快照）。
+> 阅读顺序：§1–§7 是折叠与装配的逐条契约，§8–§10 是装配与渲染，§11 是铁律，§12 是黄金输出，§13 是维护约定，§14 解释「为什么这行永远可见」，§15 解释 sourcemap 漂移守卫。
 
 ---
 
@@ -170,6 +171,10 @@
 | 属性 | `className`（样式类）、`data-turn-summary={turn.turn}`、`data-turn-summary-skill-calls`、`data-turn-summary-tool-calls`（各工具 count 之和） |
 | 位置 | `conversation.chat.turnTail`（list seat）——位于可折叠工具组**之外**，所以永远可见 |
 
+真实渲染效果（摘要行位于回复末尾、可折叠工具组之外）：
+
+![本轮摘要行](dsh-turn-summary-line.png)
+
 ---
 
 ## 10. 八语言文案表
@@ -263,3 +268,133 @@ rendered  = <div class="vqEcJa_root" data-turn-summary="7" data-turn-summary-ski
 - `src/` 是上游 TypeScript 源码的**逐字节快照**，本仓库**不含构建链**：改逻辑要回上游改 TS → 重建 → 搬运 `lib/` → 提交。
 - 线上以 `lib/` 为准；语义以本文为准。
 - `lib/client.js.map` 内嵌的 `sourcesContent` 必须与 `src/client/*` **逐字节一致**（回归测试里的漂移守卫）；`sources` 已改写为 `../src/client/*`。
+
+---
+
+## 14. 为什么挂在 `conversation.chat.turnTail` 就能常显
+
+「always-visible」不是靠 CSS 撑出来的，而是由**挂载点**和**组件形态**共同保证的。
+
+### 14.1 挂载点：Turn 尾部的列表座位
+
+插件通过 `ctx.slots.inject('conversation.chat.turnTail', …)` 把这一行注册为**会话轮的尾部列表座位**（list seat），而不是工具组内部的一行。DSH 的会话界面里，一轮回复的结构大致是：
+
+```
+本轮回复正文
+└─ 可折叠的过程区（工具调用 / 思考过程，可以收起来）
+Turn 尾部列表座位 ← 摘要行挂在这里
+```
+
+关键在于**尾部座位在可折叠过程区的外面**。因此无论过程区处于什么状态——
+
+| 过程区状态 | 摘要行 |
+|---|---|
+| 展开（`open`） | 可见 |
+| 收起（`canCollapse` / `collapsed`） | 可见 |
+| 控制器未激活（`controllerInactive`） | 可见 |
+
+都不影响摘要行——它压根不在那个折叠树的子树里。用户**不需要点击、不需要展开、不需要切标签**，这一行就在那儿。
+
+如果当初把它注册成工具组内部的一行（比如挂在 `conversation.chat.toolGroup` 之类的座位上），它就会跟着过程区一起被收起，"永远可见"这条铁律当场失效。**挂载点选错，功能就没了。**
+
+### 14.2 组件形态：只有一个不可交互的 `<div>`
+
+`TurnSummaryLine` 的产物形态是单个 `<div>`：
+
+- 无按钮、无 `open` state、无命令、无事件处理器；
+- 文本由 `summaryText(summary, t)` 纯函数算出，不依赖任何交互状态；
+- 宽度用 `width:100% / min-width:0 / overflow:hidden / text-overflow:ellipsis / white-space:nowrap`，所以**超宽时是被省略号截断，而不是换行或撑破布局**（这就是「工具一多会被省略号截断」那条已知限制的来源——完整数据仍在会话事件里）。
+
+两者合起来：这一行既**没有能力**被隐藏（无交互状态可切换），也**没有位置**被折叠树收走。
+
+### 14.3 数据时序：轮次完成后出现，且一直留在历史里
+
+摘要行的数据来自 `turn.data.get('turn-summary')`——由 Conversation Definition 在轮次推进过程中发布的 Location 数据（§7）。因此：
+
+- 进行中的轮次还没发布数据 → 读不到时按全 0 / 全空渲染（显示「本轮 · skill: 无 ｜ 工具: 无」）；
+- 轮次结束、最后一批 `tool/call` 折完 → 发布最终值 → 重新渲染成完整的一行；
+- 之后翻回历史轮次 → 数据仍在 Location 里 → 这一行照旧显示。
+
+**只统计顶层 `tool/call`** 也是同一层原因：Definition 看到的是客户端**已经收到**的顶层事件流，嵌套流程内部的工具调用没有对应的顶层事件，自然不计入——这是"只折叠已收到的事件"这条零 token 原则的直接推论。
+
+---
+
+## 15. sourcemap 漂移守卫机制
+
+本仓库把 `lib/client.js.map` 一起入库，因此必须回答一个问题：**怎么保证 `src/` 与 `lib/` 不会悄悄漂移？** 答案是四条规则 + 一道 CI 闸门。
+
+### 15.1 `sources` 必须改写为 `../src/client/*`
+
+上游产物里的 `sources` 是相对**上游 monorepo** 的路径：
+
+```
+../../../packages/client/ui-turn-summary/src/client/TurnSummaryLine.tsx
+```
+
+这份 map 被搬进本仓库的 `dsh-turn-summary/lib/` 后，上面这条路径会解析到**本仓库之外**——调试器按 `sources` 找源文件时找不到，sourcemap 直接失效（在浏览器 DevTools 里表现为"源码未映射"）。
+
+所以搬运时必须把 `sources` 改写为指向本仓库真实布局的路径：
+
+```
+../src/client/TurnSummaryLine.tsx
+../src/client/locales.ts
+../src/client/summary-fold.ts
+../src/client/turn-summary-definition.ts
+../src/client/index.ts
+```
+
+`mappings` 按**索引**引用 `sources`，所以改名不影响映射关系，`mappings` 一个字节都不用动。
+
+### 15.2 `sourcesContent` 与磁盘 `src/` 逐字节比对
+
+上游的 map 内嵌了 5 个模块的**原始 TypeScript 源码**（`sourcesContent`，与上游磁盘文件逐字节一致）。这既是调试时能直接看到 TS 源码的原因，也是**漂移守卫的比对基准**：
+
+- 回归测试逐个比对 `sourcesContent[i]` 与本仓库 `dsh-turn-summary/src/client/<对应文件>` 的磁盘字节；
+- **5/5 全部逐字节相等**才算通过；
+- 只要有人改了 `src/` 却没同步搬运 `lib/`，这条用例立刻失败——**源码与产物的漂移会在 CI 里被当场抓住**。
+
+### 15.3 `.gitattributes` 的 `text eol=lf` 是必需的
+
+漂移守卫做的是**逐字节**比对，而换行符一变，比对立刻误报：
+
+- map 里的 `sourcesContent` 存的是 **LF**；
+- 本机 `core.autocrlf=true`，检出时会把工作区的文本文件转成 **CRLF**；
+- 于是磁盘上的 `src/client/locales.ts`（CRLF，3468 B）与 map 里的 `sourcesContent`（LF，3266 字符）**不再逐字节相等**——源码一个字没改，守卫却红了。
+
+根 `.gitattributes` 里这一行把这件事钉死：
+
+```gitattributes
+dsh-turn-summary/** text eol=lf
+```
+
+作用范围只限插件目录（`dsh-downloader/` 不受影响），保证 `src/`、`lib/` 在任何机器上落盘都是 LF，**逐字节比对在任何环境下都稳定成立**。
+
+### 15.4 产物里绝对路径必须 0 命中
+
+产物要进公开仓库，不能泄漏构建机的本地路径。两条硬性断言：
+
+| 检查 | 期望 |
+|---|---|
+| `grep -c "C:\\" dsh-turn-summary/lib/client.js` | `0` |
+| `grep -c "deepseek-harness" dsh-turn-summary/lib/client.js` | `0` |
+| `lib/client.js.map` 内同样两项 | 均为 `0` |
+
+上游产物里**唯一**的泄漏点就是第 8 行那条注释：
+
+```
+//#region \0dsh-css:C:\CODE\deepseek-harness\packages\client\ui-turn-summary\src\client\TurnSummaryLine.module.css.mjs
+```
+
+搬运时把它改成仓库内相对路径即可（`//#region \0dsh-css:src/client/TurnSummaryLine.module.css.mjs`）。这是**注释里的改动，零行为影响**；除此之外 `lib/client.js` 的其余字节逐字保留（15 783 B → 15 726 B，差值 57 B 全部来自这一行），末行 `//# sourceMappingURL=client.js.map` 也保留——因为 map 是一起入库的。
+
+### 15.5 CI 闸门
+
+除了回归测试里的漂移守卫用例，CI 还会在跑完测试后追加一步：
+
+```bash
+git diff --exit-code -- dsh-turn-summary/lib dsh-turn-summary/src
+```
+
+它保证**入库的产物与源码快照**在工作区没有被意外改动——包括"有人手工编辑了 `lib/`"或"换行符被工具改写"这类不会触发任何逻辑测试、却会破坏可复现性的改动。
+
+> 总结：**`sources` 指向仓库内 → `sourcesContent` 与磁盘逐字节相同 → 换行符统一为 LF → 产物零绝对路径 → CI 兜底**。五条缺一不可。

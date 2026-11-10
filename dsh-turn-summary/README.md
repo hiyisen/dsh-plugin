@@ -54,7 +54,7 @@ dsh-turn-summary/
 
 - 要**改逻辑**：回上游改 TypeScript → 重新构建 → 把新的 `lib/client.js` / `lib/client.js.map` 搬运到本仓库 → 提交；
 - **线上以 `lib/` 为准**（DSH 加载的是 `lib/client.js`，`src/` 不参与运行）；
-- **语义以 [`docs/dsh-turn-summary 行为规格.md`](../docs/dsh-turn-summary%20行为规格.md) 为准**（唯一权威规格）；
+- **语义以 [`docs/dsh-turn-summary 原理与业务流程.md`](../docs/dsh-turn-summary%20原理与业务流程.md) 为准**（唯一权威规格）；
 - 回归测试里有一条**漂移守卫**：比对 `lib/client.js.map` 内嵌的 `sourcesContent` 与 `src/client/*` 的磁盘字节——两者必须逐字节一致，否则说明源码与产物漂移了。
 
 ## 安装
