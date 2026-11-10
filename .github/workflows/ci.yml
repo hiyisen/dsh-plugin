@@ -19,3 +19,7 @@ jobs:
         run: node --test "dsh-turn-summary/tests/*.test.mjs"
       - name: 产物与源码快照不得漂移
         run: git diff --exit-code -- dsh-turn-summary/lib dsh-turn-summary/src
+      - name: 市场索引安装源可达性校验
+        # 逐条把索引里的 source.commit 拉到临时仓库里 checkout 一次，
+        # 确认市场安装真的能装上（发布通道换过导致 hash 失配时会在此拦下）。
+        run: node scripts/verify-market.mjs
