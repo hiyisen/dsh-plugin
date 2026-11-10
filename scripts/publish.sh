@@ -1,31 +1,71 @@
 #!/usr/bin/env bash
 # 发版脚本：在插件版本 commit 之后运行，把 market/index.json 指向该 commit 并推送。
-# 用法: ./scripts/publish.sh          （发布当前 dsh-downloader 版本）
+# 用法: ./scripts/publish.sh                 （发布 dsh-downloader，行为与原来完全一致）
+#       ./scripts/publish.sh dsh-turn-summary （发布指定插件）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VER=$(python3 -c "import json;print(json.load(open('dsh-downloader/package.json'))['version'])")
+PLUGIN_DIR="${1:-dsh-downloader}"
+PLUGIN_JSON="$PLUGIN_DIR/package.json"
+[[ -f "$PLUGIN_JSON" ]] || { echo "找不到 $PLUGIN_JSON"; exit 1; }
+
+VER=$(python3 -c "import json;print(json.load(open('$PLUGIN_JSON'))['version'])")
 COMMIT=$(git rev-parse HEAD)
 TS=$(git log -1 --format=%ct)
-EXISTING=$(python3 -c "import json;print(','.join(v['version'] for v in json.load(open('market/index.json'))['plugins'][0]['versions']))")
+EXISTING=$(python3 -c "
+import json
+idx = json.load(open('market/index.json'))
+plug = next((p for p in idx['plugins'] if p['name'] == '$PLUGIN_DIR'), None)
+if plug is None:
+    raise SystemExit('market/index.json 里没有插件 $PLUGIN_DIR；先运行 scripts/market-add.sh $PLUGIN_DIR')
+print(','.join(v['version'] for v in plug['versions']))")
 
 if [[ ",$EXISTING," == *",$VER,"* ]]; then
   echo "market/index.json 已包含 v$VER，无需更新"; exit 0
 fi
 
-python3 - "$VER" "$COMMIT" "$TS" <<'EOF'
+python3 - "$VER" "$COMMIT" "$TS" "$PLUGIN_DIR" <<'EOF'
 import json, sys
-ver, commit, ts = sys.argv[1], sys.argv[2], int(sys.argv[3])
+ver, commit, ts, plugin_dir = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+
+
+def version_key(version):
+    """Sort key that also sorts prerelease versions such as 1.0.0-rc.1.
+
+    A plain release outranks any prerelease of the same release tuple; numeric
+    prerelease identifiers compare numerically and sort below alphanumeric ones.
+    Pure numeric versions such as 0.3.3 keep their previous relative order.
+    """
+    head, separator, tail = str(version).strip().partition('-')
+    release = []
+    for part in head.split('.'):
+        release.append(int(part) if part.isdigit() else 0)
+    while len(release) < 4:
+        release.append(0)
+    release = tuple(release[:4])
+    if not separator or not tail:
+        return (release, 1, ())
+    identifiers = []
+    for part in tail.split('.'):
+        if part.isdigit():
+            identifiers.append((0, int(part), ''))
+        else:
+            identifiers.append((1, 0, part))
+    while len(identifiers) < 4:
+        identifiers.append((-1, 0, ''))
+    return (release, 0, tuple(identifiers[:4]))
+
+
 p = 'market/index.json'
 idx = json.load(open(p, encoding='utf-8'))
-plug = idx['plugins'][0]
+plug = next(p for p in idx['plugins'] if p['name'] == plugin_dir)
 plug['versions'].append({
     'version': ver,
     'publishTimestamp': ts,
     'source': {'type': 'git', 'url': 'https://github.com/hiyisen/dsh-plugin',
-               'commit': commit, 'path': 'dsh-downloader'},
+               'commit': commit, 'path': plugin_dir},
 })
-plug['versions'].sort(key=lambda v: [int(x) for x in v['version'].split('.')], reverse=True)
+plug['versions'].sort(key=version_key, reverse=True)
 json.dump(idx, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 open(p, 'a').write('\n')
 print(f'index.json += v{ver} @ {commit[:8]}')

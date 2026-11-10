@@ -1,0 +1,363 @@
+#!/usr/bin/env bash
+# 首次入库：把一个插件加进 market/index.json（建分类 + 建条目 + 追加首个版本）并提交（**不 push**）。
+#
+# 用法: ./scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [选项]
+#   --en-description "..."      英文描述（缺省用通用英文模板）
+#   --zh-description "..."      中文描述（缺省取插件 package.json 的 description）
+#   --category-title-en "..."   分类英文标题（缺省用内置表）
+#   --category-title-zh "..."   分类中文标题（缺省用内置表）
+#   --keywords "a,b,c"          关键词，逗号分隔（缺省用插件名派生）
+#   --no-commit                 只改文件，不提交
+#
+# 幂等：重复执行不会产生重复条目，也不会产生重复版本。
+# 增量：既有条目与既有分类一个字节都不动——写入走文本级插入，不整体重排 JSON。
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+usage() {
+  echo "用法: scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [--en-description \"...\"] [--zh-description \"...\"] [--category-title-en \"...\"] [--category-title-zh \"...\"] [--keywords \"a,b,c\"] [--no-commit]" >&2
+  exit 1
+}
+
+[[ $# -ge 4 ]] || usage
+DIR="$1"; ZH_TITLE="$2"; EN_TITLE="$3"; CATEGORY="$4"; shift 4
+
+EN_DESCRIPTION=""
+ZH_DESCRIPTION=""
+CATEGORY_TITLE_EN=""
+CATEGORY_TITLE_ZH=""
+KEYWORDS=""
+DO_COMMIT=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --en-description) EN_DESCRIPTION="${2:-}"; shift 2 ;;
+    --zh-description) ZH_DESCRIPTION="${2:-}"; shift 2 ;;
+    --category-title-en) CATEGORY_TITLE_EN="${2:-}"; shift 2 ;;
+    --category-title-zh) CATEGORY_TITLE_ZH="${2:-}"; shift 2 ;;
+    --keywords) KEYWORDS="${2:-}"; shift 2 ;;
+    --no-commit) DO_COMMIT=0; shift ;;
+    *) echo "未知参数: $1" >&2; usage ;;
+  esac
+done
+
+PKG_JSON="$DIR/package.json"
+[[ -f "$PKG_JSON" ]] || { echo "找不到 $PKG_JSON"; exit 1; }
+
+PKG_NAME=$(python3 -c "import json;print(json.load(open('$PKG_JSON'))['name'])")
+COMMIT=$(git rev-parse HEAD)
+TS=$(git log -1 --format=%ct)
+
+python3 - "$DIR" "$ZH_TITLE" "$EN_TITLE" "$CATEGORY" "$EN_DESCRIPTION" "$ZH_DESCRIPTION" \
+  "$CATEGORY_TITLE_EN" "$CATEGORY_TITLE_ZH" "$KEYWORDS" "$COMMIT" "$TS" <<'PYEOF'
+import json
+import os
+import re
+import sys
+
+(plugin_dir, zh_title, en_title, category, en_description, zh_description,
+ category_title_en, category_title_zh, keywords, commit, timestamp) = sys.argv[1:12]
+timestamp = int(timestamp)
+
+INDEX = 'market/index.json'
+REPO_URL = 'https://github.com/hiyisen/dsh-plugin'
+DEFAULT_EN_DESCRIPTION = (
+    'One fixed summary line at the end of every completed reply. Folded entirely in '
+    'the browser from events the client already received — no model request, no '
+    'token cost, no session-log writes.'
+)
+CATEGORY_TITLES = {
+    'media': {'en': 'Media & download', 'zh-cn': '媒体与下载'},
+    'observability': {'en': 'Observability', 'zh-cn': '可观测性'},
+}
+
+
+def jstr(value):
+    """Render one JSON scalar the way the index file spells it."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def render_value(value):
+    """Render one JSON value the way the index file spells it."""
+    if isinstance(value, dict):
+        return '{ ' + ', '.join('%s: %s' % (jstr(k), render_value(v)) for k, v in value.items()) + ' }'
+    if isinstance(value, list):
+        return '[' + ', '.join(render_value(item) for item in value) + ']'
+    return jstr(value)
+
+
+def render_inline(obj):
+    """Render a flat object on a single line: { "k": v, "k2": v2 }."""
+    return render_value(obj)
+
+
+def find_value_start(text, key):
+    """Index of the JSON value that follows the given key."""
+    match = re.search(r'"%s"\s*:' % re.escape(key), text)
+    if match is None:
+        raise SystemExit('market/index.json 里找不到键 "%s"' % key)
+    index = match.end()
+    while index < len(text) and text[index] in ' \t\r\n':
+        index += 1
+    return index
+
+
+def find_block_end(text, start):
+    """Index of the closer matching the opener at `start` (string aware)."""
+    opener = text[start]
+    closer = {'{': '}', '[': ']'}[opener]
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == '\\':
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return index
+    raise SystemExit('market/index.json 结构异常：括号不配对')
+
+
+def line_indent(text, position):
+    """Leading whitespace of the line that holds `position`."""
+    line_start = text.rfind('\n', 0, position) + 1
+    prefix = text[line_start:position]
+    return prefix if prefix.strip() == '' else ''
+
+
+def split_elements(text, open_index, close_index):
+    """Spans of the top-level elements inside a JSON array."""
+    spans = []
+    depth = 0
+    in_string = False
+    escape = False
+    start = None
+    for index in range(open_index + 1, close_index):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == '\\':
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            if start is None:
+                start = index
+            continue
+        if start is None:
+            if char.isspace():
+                continue
+            start = index
+        if char in '{[':
+            depth += 1
+            continue
+        if char in '}]':
+            depth -= 1
+            continue
+        if char == ',' and depth == 0:
+            spans.append((start, index))
+            start = None
+    if start is not None:
+        spans.append((start, close_index))
+    return spans
+
+
+def element_indent(text, open_index, close_index):
+    """Indentation of the array elements (or object members) of a block."""
+    inner_start = open_index + 1
+    while inner_start < close_index and text[inner_start] in ' \t\r\n':
+        inner_start += 1
+    if inner_start < close_index:
+        line_start = text.rfind('\n', 0, inner_start) + 1
+        prefix = text[line_start:inner_start]
+        if prefix.strip() == '':
+            return len(prefix)
+    return len(line_indent(text, open_index)) + 2
+
+
+def insert_into_block(text, open_index, close_index, lines, eol):
+    """Append one element/member at the end of a JSON array/object, keeping the rest byte-identical."""
+    closing_indent = line_indent(text, close_index)
+    block = eol.join(lines)
+    inner = text[open_index + 1:close_index]
+    if inner.strip() == '':
+        return (text[:open_index + 1] + eol + block + eol + closing_indent + text[close_index:])
+    cut = close_index
+    while cut > 0 and text[cut - 1] in ' \t\r\n':
+        cut -= 1
+    return text[:cut] + ',' + eol + block + eol + closing_indent + text[close_index:]
+
+
+def render_category_lines(category_key, title, indent):
+    """One category member: "key": { "title": { "en": ..., "zh-cn": ... } }."""
+    return ['%s%s: %s' % (' ' * indent, jstr(category_key), render_inline({'title': title}))]
+
+
+def render_version_lines(version, indent):
+    pad = ' ' * indent
+    inner = ' ' * (indent + 2)
+    source = version['source']
+    return [
+        pad + '{',
+        '%s%s: %s,' % (inner, jstr('version'), jstr(version['version'])),
+        '%s%s: %s,' % (inner, jstr('publishTimestamp'), version['publishTimestamp']),
+        '%s%s: {' % (inner, jstr('source')),
+        '%s  %s: %s,' % (inner, jstr('type'), jstr(source['type'])),
+        '%s  %s: %s,' % (inner, jstr('url'), jstr(source['url'])),
+        '%s  %s: %s,' % (inner, jstr('commit'), jstr(source['commit'])),
+        '%s  %s: %s' % (inner, jstr('path'), jstr(source['path'])),
+        '%s}' % inner,
+        '%s}' % pad,
+    ]
+
+
+def render_plugin_lines(entry, indent):
+    pad = ' ' * indent
+    inner = ' ' * (indent + 2)
+    description = entry['description']
+    lines = [
+        pad + '{',
+        '%s%s: %s,' % (inner, jstr('name'), jstr(entry['name'])),
+        '%s%s: %s,' % (inner, jstr('title'), render_inline(entry['title'])),
+        '%s%s: {' % (inner, jstr('description')),
+        '%s  %s: %s,' % (inner, jstr('en'), jstr(description['en'])),
+        '%s  %s: %s' % (inner, jstr('zh-cn'), jstr(description['zh-cn'])),
+        '%s},' % inner,
+        '%s%s: %s,' % (inner, jstr('author'), jstr(entry['author'])),
+        '%s%s: %s,' % (inner, jstr('homepage'), jstr(entry['homepage'])),
+        '%s%s: %s,' % (inner, jstr('repository'), render_inline(entry['repository'])),
+        '%s%s: %s,' % (inner, jstr('metadata'), render_inline(entry['metadata'])),
+        '%s%s: [' % (inner, jstr('versions')),
+    ]
+    lines.extend(render_version_lines(entry['versions'][0], indent + 4))
+    lines.append('%s]' % inner)
+    lines.append('%s}' % pad)
+    return lines
+
+
+with open(INDEX, encoding='utf-8', newline='') as handle:
+    text = handle.read()
+eol = '\r\n' if '\r\n' in text else '\n'
+data = json.loads(text)
+
+with open(os.path.join(plugin_dir, 'package.json'), encoding='utf-8') as handle:
+    package = json.load(handle)
+name = package['name']
+version = package['version']
+author = package.get('author', 'hiyisen')
+resolved_zh = zh_description or package.get('description', '')
+resolved_en = en_description or DEFAULT_EN_DESCRIPTION
+resolved_keywords = (
+    [part.strip() for part in keywords.split(',') if part.strip()]
+    if keywords else [name]
+)
+category_title = {
+    'en': category_title_en or CATEGORY_TITLES.get(category, {}).get('en', category),
+    'zh-cn': category_title_zh or CATEGORY_TITLES.get(category, {}).get('zh-cn', category),
+}
+
+# 1) 分类：缺了才建，既有分类一个字节都不动。
+if category not in data['metadata']['categories']:
+    category_open = find_value_start(text, 'categories')
+    category_close = find_block_end(text, category_open)
+    indent = element_indent(text, category_open, category_close)
+    lines = render_category_lines(category, category_title, indent)
+    text = insert_into_block(text, category_open, category_close, lines, eol)
+    print('分类 %s 已创建' % category)
+else:
+    print('分类 %s 已存在' % category)
+
+# 2) 插件条目 + 3) 版本：缺了才建，既有条目与版本一个字节都不动。
+plugin_open = find_value_start(text, 'plugins')
+plugin_close = find_block_end(text, plugin_open)
+existing = None
+for start, end in split_elements(text, plugin_open, plugin_close):
+    try:
+        item = json.loads(text[start:end])
+    except ValueError:
+        continue
+    if isinstance(item, dict) and item.get('name') == name:
+        existing = (start, end, item)
+        break
+
+if existing is None:
+    entry = {
+        'name': name,
+        'title': {'en': en_title, 'zh-cn': zh_title},
+        'description': {'en': resolved_en, 'zh-cn': resolved_zh},
+        'author': author,
+        'homepage': REPO_URL,
+        'repository': {'url': REPO_URL, 'directory': plugin_dir},
+        'metadata': {'category': category, 'keywords': resolved_keywords},
+        'versions': [{
+            'version': version,
+            'publishTimestamp': timestamp,
+            'source': {'type': 'git', 'url': REPO_URL, 'commit': commit, 'path': plugin_dir},
+        }],
+    }
+    indent = element_indent(text, plugin_open, plugin_close)
+    lines = render_plugin_lines(entry, indent)
+    text = insert_into_block(text, plugin_open, plugin_close, lines, eol)
+    print('插件条目 %s 已创建（v%s @ %s）' % (name, version, commit[:8]))
+else:
+    start, end, item = existing
+    if any(entry['version'] == version for entry in item['versions']):
+        print('插件条目 %s 已存在，且已含 v%s —— 无需更新' % (name, version))
+    else:
+        entry_text = text[start:end]
+        versions_open = find_value_start(entry_text, 'versions')
+        versions_close = find_block_end(entry_text, versions_open)
+        indent = element_indent(entry_text, versions_open, versions_close)
+        lines = render_version_lines({
+            'version': version,
+            'publishTimestamp': timestamp,
+            'source': {'type': 'git', 'url': REPO_URL, 'commit': commit, 'path': plugin_dir},
+        }, indent)
+        updated = insert_into_block(entry_text, versions_open, versions_close, lines, eol)
+        text = text[:start] + updated + text[end:]
+        print('插件条目 %s 已存在，追加 v%s' % (name, version))
+
+check = json.loads(text)
+names = [plugin['name'] for plugin in check['plugins']]
+assert names.count(name) == 1, '插件条目重复：%s' % names
+assert category in check['metadata']['categories'], '分类缺失：%s' % category
+versions = [plugin['versions'] for plugin in check['plugins'] if plugin['name'] == name][0]
+assert len([v for v in versions if v['version'] == version]) == 1, '版本重复'
+
+with open(INDEX, 'w', encoding='utf-8', newline='') as handle:
+    handle.write(text)
+
+print('校验通过：categories=%s plugins=%s' % (list(check['metadata']['categories']), names))
+PYEOF
+
+if git diff --quiet -- market/index.json; then
+  echo "market/index.json 无变化（无需提交）"
+  exit 0
+fi
+
+git add market/index.json
+echo "--- market/index.json 待提交变更 ---"
+git diff --cached -- market/index.json
+
+if [[ "$DO_COMMIT" == "1" ]]; then
+  git commit -m "feat(market): 新增插件条目 $PKG_NAME"
+  echo "已提交（未 push）。请复核上面的 diff。"
+else
+  git reset -q -- market/index.json
+  echo "已写入工作区（--no-commit，未提交、未 push）。"
+fi
