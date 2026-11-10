@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Durchlaufzusammenfassung",
+    "description": "Zeigt am Ende jeder abgeschlossenen Antwort eine feste Zeile mit den verwendeten Skill, Plugins und Werkzeugen."
+  }
+}

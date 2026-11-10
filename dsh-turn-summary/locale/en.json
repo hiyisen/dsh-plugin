@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Turn summary",
+    "description": "Shows a fixed line with the skill, plugins, and tools used in each completed reply."
+  }
+}

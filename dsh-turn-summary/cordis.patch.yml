@@ -1,0 +1,6 @@
+# The bundle patch a profile applies when this package is installed. `name` must
+# be exactly the package name: the browser half is discovered from that row's
+# package.json `dsh.client` declaration.
+- insert:
+    - id: turn-summary
+      name: dsh-turn-summary

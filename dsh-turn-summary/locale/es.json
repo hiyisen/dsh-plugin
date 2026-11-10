@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Resumen del turno",
+    "description": "Muestra una línea fija con la skill, los complementos y las herramientas usados en cada respuesta completada."
+  }
+}

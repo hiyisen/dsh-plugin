@@ -1,0 +1,19 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # 零依赖：只装 Node，不跑 npm ci、不装任何包、不建缓存。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: dsh-turn-summary 回归测试（node:test，零依赖）
+        run: node --test "dsh-turn-summary/tests/*.test.mjs"

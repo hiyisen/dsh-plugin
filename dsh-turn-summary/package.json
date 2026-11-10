@@ -1,0 +1,22 @@
+{
+  "name": "dsh-turn-summary",
+  "version": "1.0.0",
+  "description": "本轮摘要：在每轮回复末尾固定显示一行摘要——本轮用了哪些 skill、哪些工具各调用几次。纯浏览器折叠，不请求模型、不消耗 token、不写入会话日志；没有就明确写「无」。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": { "default": "./lib/index.js" },
+    "./client": { "default": "./lib/client.js" },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml", "listedByDefault": true },
+    "client": {
+      "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-ui-chat"],
+      "platform": "web"
+    }
+  },
+  "engines": { "dsh": ">=0.2.2-rc.1 <0.3.0" },
+  "author": "hiyisen",
+  "license": "MIT"
+}

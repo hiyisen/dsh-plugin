@@ -1,0 +1,5 @@
+# dsh-turn-summary 的源码快照与浏览器产物必须逐字节可复现：
+# 回归测试要拿 lib/client.js.map 内嵌的 sourcesContent（原始 TypeScript 源码）
+# 与 src/client/* 的磁盘字节逐字节比对，任何换行符转换都会让漂移守卫误报。
+# 因此这棵目录统一按 LF 落盘，不受 core.autocrlf 影响。
+dsh-turn-summary/** text eol=lf
