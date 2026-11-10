@@ -8,6 +8,8 @@
 #   --category-title-zh "..."   分类中文标题（缺省用内置表）
 #   --keywords "a,b,c"          关键词，逗号分隔（缺省用插件名派生）
 #   --refresh-commit            把既有条目的 source.commit 刷新到当前 HEAD
+#   --update-description        用 --zh-description / --en-description 的完整文本
+#                               改写既有条目的描述（不带此参数时不碰既有描述）
 #   --no-commit                 只改文件，不提交
 #
 # 幂等：重复执行不会产生重复条目，也不会产生重复版本。
@@ -15,6 +17,12 @@
 #
 # --refresh-commit 是显式开关：只有带上它才会改写既有条目的 source.commit；
 # 不带这个参数时脚本行为与之前完全一致（同样幂等、同样不碰既有条目的字节）。
+# --update-description 同理：只有带上它才会改写既有条目的描述文本。
+#
+# 重建示例（dsh-turn-summary 的条目就是用这条命令生成的，可原样重跑）：
+#   scripts/market-add.sh dsh-turn-summary "本轮摘要" "Turn Summary" observability \
+#     --zh-description "每轮回复末尾固定一行摘要：……本版本与已装机的 0.2.2-rc.1 产物一致，升级不会改变显示效果。" \
+#     --en-description "A fixed one-line summary under every completed reply: …… Same artifact as 0.2.2-rc.1 already installed locally; upgrading does not change what the line shows."
 #
 # 与 publish.sh 的分工（**有意不同，不是疏漏，勿"顺手统一"**）：
 #   · publish.sh  是既有脚本的泛化，硬指标是「对 dsh-downloader 无参执行与改造前逐行等价」，
@@ -26,7 +34,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 usage() {
-  echo "用法: scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [--en-description \"...\"] [--zh-description \"...\"] [--category-title-en \"...\"] [--category-title-zh \"...\"] [--keywords \"a,b,c\"] [--refresh-commit] [--no-commit]" >&2
+  echo "用法: scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [--en-description \"...\"] [--zh-description \"...\"] [--category-title-en \"...\"] [--category-title-zh \"...\"] [--keywords \"a,b,c\"] [--refresh-commit] [--update-description] [--no-commit]" >&2
   exit 1
 }
 
@@ -39,6 +47,7 @@ CATEGORY_TITLE_EN=""
 CATEGORY_TITLE_ZH=""
 KEYWORDS=""
 REFRESH_COMMIT=0
+UPDATE_DESCRIPTION=0
 DO_COMMIT=1
 
 while [[ $# -gt 0 ]]; do
@@ -49,10 +58,16 @@ while [[ $# -gt 0 ]]; do
     --category-title-zh) CATEGORY_TITLE_ZH="${2:-}"; shift 2 ;;
     --keywords) KEYWORDS="${2:-}"; shift 2 ;;
     --refresh-commit) REFRESH_COMMIT=1; shift ;;
+    --update-description) UPDATE_DESCRIPTION=1; shift ;;
     --no-commit) DO_COMMIT=0; shift ;;
     *) echo "未知参数: $1" >&2; usage ;;
   esac
 done
+
+if [[ "$UPDATE_DESCRIPTION" == "1" && -z "$ZH_DESCRIPTION" && -z "$EN_DESCRIPTION" ]]; then
+  echo "--update-description 需要配合 --zh-description / --en-description 使用" >&2
+  exit 1
+fi
 
 PKG_JSON="$DIR/package.json"
 [[ -f "$PKG_JSON" ]] || { echo "找不到 $PKG_JSON"; exit 1; }
@@ -62,16 +77,18 @@ COMMIT=$(git rev-parse HEAD)
 TS=$(git log -1 --format=%ct)
 
 PY_OUTPUT=$(python3 - "$DIR" "$ZH_TITLE" "$EN_TITLE" "$CATEGORY" "$EN_DESCRIPTION" "$ZH_DESCRIPTION" \
-  "$CATEGORY_TITLE_EN" "$CATEGORY_TITLE_ZH" "$KEYWORDS" "$COMMIT" "$TS" "$REFRESH_COMMIT" <<'PYEOF'
+  "$CATEGORY_TITLE_EN" "$CATEGORY_TITLE_ZH" "$KEYWORDS" "$COMMIT" "$TS" "$REFRESH_COMMIT" "$UPDATE_DESCRIPTION" <<'PYEOF'
 import json
 import os
 import re
 import sys
 
 (plugin_dir, zh_title, en_title, category, en_description, zh_description,
- category_title_en, category_title_zh, keywords, commit, timestamp, refresh_commit) = sys.argv[1:13]
+ category_title_en, category_title_zh, keywords, commit, timestamp, refresh_commit,
+ update_description) = sys.argv[1:14]
 timestamp = int(timestamp)
 refresh_commit = refresh_commit == '1'
+update_description = update_description == '1'
 
 INDEX = 'market/index.json'
 REPO_URL = 'https://github.com/hiyisen/dsh-plugin'
@@ -287,6 +304,37 @@ def refresh_source_commits(entry_text, commit):
     return pattern.sub(replace, entry_text), changed
 
 
+def update_entry_descriptions(entry_text, en_description, zh_description):
+    """Rewrite the description block of one plugin entry, textually.
+
+    Only the two description strings change; every other byte of the entry
+    (and of the rest of the index) stays exactly as it was.
+    @param entry_text - the plugin entry's source text.
+    @param en_description - new English description; empty keeps the current one.
+    @param zh_description - new Chinese description; empty keeps the current one.
+    @returns (text, changed) - the rewritten text and whether anything changed.
+    """
+    desc_open = find_value_start(entry_text, 'description')
+    desc_close = find_block_end(entry_text, desc_open)
+    block = entry_text[desc_open:desc_close + 1]
+    updated = block
+    if en_description:
+        updated = re.sub(
+            r'("en"\s*:\s*)("(?:[^"\\]|\\.)*")',
+            lambda match: match.group(1) + jstr(en_description),
+            updated,
+            count=1,
+        )
+    if zh_description:
+        updated = re.sub(
+            r'("zh-cn"\s*:\s*)("(?:[^"\\]|\\.)*")',
+            lambda match: match.group(1) + jstr(zh_description),
+            updated,
+            count=1,
+        )
+    return entry_text[:desc_open] + updated + entry_text[desc_close + 1:], updated != block
+
+
 with open(INDEX, encoding='utf-8', newline='') as handle:
     text = handle.read()
 eol = '\r\n' if '\r\n' in text else '\n'
@@ -354,17 +402,30 @@ if existing is None:
     action = 'created'
 else:
     start, end, item = existing
-    entry_text = text[start:end]
     moved = False
     appended = False
+    described = False
     if refresh_commit:
+        entry_text = text[start:end]
         entry_text, moved = refresh_source_commits(entry_text, commit)
         if moved:
             text = text[:start] + entry_text + text[end:]
+            end = start + len(entry_text)
             item = json.loads(text[start:end])
             print('插件条目 %s 的 source.commit 已刷新到 %s' % (name, commit[:8]))
         else:
             print('插件条目 %s 的 source.commit 已是 %s —— 无需刷新' % (name, commit[:8]))
+    if update_description:
+        entry_text = text[start:end]
+        entry_text, described = update_entry_descriptions(
+            entry_text, en_description, zh_description)
+        if described:
+            text = text[:start] + entry_text + text[end:]
+            end = start + len(entry_text)
+            item = json.loads(text[start:end])
+            print('插件条目 %s 的描述已更新' % name)
+        else:
+            print('插件条目 %s 的描述已是给定文本 —— 无需更新' % name)
     if any(entry['version'] == version for entry in item['versions']):
         print('插件条目 %s 已存在，且已含 v%s —— 无需更新' % (name, version))
     else:
@@ -379,12 +440,13 @@ else:
         }, indent)
         updated = insert_into_block(entry_text, versions_open, versions_close, lines, eol)
         text = text[:start] + updated + text[end:]
+        end = start + len(updated)
         appended = True
         print('插件条目 %s 已存在，追加 v%s' % (name, version))
-    if moved and appended:
-        action = 'updated'
+    if described:
+        action = 'updated' if (moved or appended) else 'described'
     elif moved:
-        action = 'refreshed'
+        action = 'updated' if appended else 'refreshed'
     elif appended:
         action = 'updated'
     else:
@@ -420,6 +482,7 @@ git diff --cached -- market/index.json
 case "$ACTION" in
   created) COMMIT_MESSAGE="feat(market): 新增插件条目 $PKG_NAME" ;;
   refreshed) COMMIT_MESSAGE="chore(market): 刷新插件条目 $PKG_NAME 的 source.commit" ;;
+  described) COMMIT_MESSAGE="chore(market): 更新插件条目 $PKG_NAME 的描述" ;;
   *) COMMIT_MESSAGE="chore(market): 更新插件条目 $PKG_NAME" ;;
 esac
 
