@@ -21,6 +21,7 @@
 #
 # 重建示例（dsh-turn-summary 的条目就是用这条命令生成的，可原样重跑）：
 #   scripts/market-add.sh dsh-turn-summary "本轮摘要" "Turn Summary" observability \
+#     --keywords "turn-summary,summary,tool-usage,skill,observability,zero-token" \
 #     --zh-description "每轮回复末尾固定一行摘要：……本版本与已装机的 0.2.2-rc.1 产物一致，升级不会改变显示效果。" \
 #     --en-description "A fixed one-line summary under every completed reply: …… Same artifact as 0.2.2-rc.1 already installed locally; upgrading does not change what the line shows."
 #
