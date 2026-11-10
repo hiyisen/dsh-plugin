@@ -114,6 +114,27 @@ test('locale/ 下八个语言 JSON 都能解析且含 meta', () => {
   }
 })
 
+test('locale/ 是插件市场的展示元数据：每份恰有 title 与 description，title 为该语言的插件名', () => {
+  const titles = {
+    de: 'Durchlaufzusammenfassung',
+    en: 'Turn summary',
+    es: 'Resumen del turno',
+    fr: 'Résumé du tour',
+    ja: 'ターンサマリー',
+    pt: 'Resumo da rodada',
+    ru: 'Сводка раунда',
+    zh: '本轮摘要',
+  }
+  for (const [language, title] of Object.entries(titles)) {
+    const parsed = JSON.parse(
+      readFileSync(join(PACKAGE_ROOT, 'locale', `${language}.json`), 'utf8'),
+    )
+    assert.deepEqual(Object.keys(parsed.meta), ['title', 'description'], `${language}.json 的 meta 字段集不一致`)
+    assert.equal(parsed.meta.title, title, `${language}.json 的插件名不对`)
+    assert.ok(parsed.meta.description.length > 0, `${language}.json 的描述不得为空`)
+  }
+})
+
 test('lib/client.js 不含上游仓库名与本地绝对路径', () => {
   const text = readFileSync(join(PACKAGE_ROOT, 'lib', 'client.js'), 'utf8')
   assert.ok(!text.includes('deepseek-harness'))
