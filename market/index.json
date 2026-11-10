@@ -4,7 +4,8 @@
   "description": { "en": "Self-hosted index for hiyisen/dsh-plugin.", "zh-cn": "hiyisen/dsh-plugin 自建插件索引。" },
   "metadata": {
     "categories": {
-      "media": { "title": { "en": "Media & download", "zh-cn": "媒体与下载" } }
+      "media": { "title": { "en": "Media & download", "zh-cn": "媒体与下载" } },
+      "observability": { "title": { "en": "Observability", "zh-cn": "可观测性" } }
     }
   },
   "plugins": [
@@ -28,6 +29,30 @@
             "url": "https://github.com/hiyisen/dsh-plugin",
             "commit": "4bfba8e2d1a91cc6297ebf230941f3bb77dba6a8",
             "path": "dsh-downloader"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dsh-turn-summary",
+      "title": { "en": "Turn Summary", "zh-cn": "本轮摘要" },
+      "description": {
+        "en": "A fixed one-line summary under every completed reply: which skills this turn loaded and how many times each tool was called. Folded entirely in the browser from events the client already received — no model request, no token cost, no session-log writes. Missing items are spelled out as 「无」.",
+        "zh-cn": "每轮回复末尾固定一行摘要：本轮加载了哪些 skill、各工具调用了几次。完全由浏览器折叠客户端已收到的事件得到——不请求模型、不消耗 token、不写会话日志；没有的项明确写「无」。"
+      },
+      "author": "hiyisen",
+      "homepage": "https://github.com/hiyisen/dsh-plugin",
+      "repository": { "url": "https://github.com/hiyisen/dsh-plugin", "directory": "dsh-turn-summary" },
+      "metadata": { "category": "observability", "keywords": ["turn-summary", "summary", "tool-usage", "skill", "observability", "zero-token"] },
+      "versions": [
+        {
+          "version": "1.0.0",
+          "publishTimestamp": 1794300991,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/hiyisen/dsh-plugin",
+            "commit": "e5690ea9364054eed4adb93553a8532b5a88b73b",
+            "path": "dsh-turn-summary"
           }
         }
       ]
