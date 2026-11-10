@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import {
+  CLIENT_ARTIFACT_SOURCE,
   CSS_ROOT_CLASS,
   createTurn,
   createTranslator,
@@ -108,6 +109,37 @@ test('没有归属来源时 pluginNames 恒为空，界面上不出现「插件�
   assert.ok(!vnode.props.children.includes('plugins'))
 })
 
+/**
+ * The honest step-one seam inside the shipped artifact: the default
+ * tool-owner resolver reports "unknown owner" for every tool.
+ */
+const DEFAULT_OWNER_SEAM = '{ ownersOf: () => [] }'
+
+/** The same seam with a probe owner, so `pluginNames` has something to report. */
+const PROBE_OWNER_SEAM = '{ ownersOf: () => ["probe-plugin"] }'
+
+test('pluginNames 是算出来的：把产物的缺省归属解析器换成探针后，pluginNames 必须带上探针名', () => {
+  const occurrences = CLIENT_ARTIFACT_SOURCE.split(DEFAULT_OWNER_SEAM).length - 1
+  assert.equal(occurrences, 1, '产物的缺省归属解析器写法变了，探针用例需要同步')
+  const probed = loadArtifact(CLIENT_ARTIFACT_SOURCE.replace(DEFAULT_OWNER_SEAM, PROBE_OWNER_SEAM))
+  const probedDefinition = probed.context.definitionRegistrations[0]
+  const location = publish(probedDefinition, foldEvents(probedDefinition, GOLDEN_EVENTS))
+  assert.deepEqual(location.value.pluginNames, ['probe-plugin'])
+})
+
+test('pluginNames 非空时，渲染行出现「插件」段', () => {
+  const probed = loadArtifact(CLIENT_ARTIFACT_SOURCE.replace(DEFAULT_OWNER_SEAM, PROBE_OWNER_SEAM))
+  const probedDefinition = probed.context.definitionRegistrations[0]
+  const probedComponent = probed.context.slotRegistrations[0].component
+  const probedT = createTranslator(probed.context.localeRegistrations[0].dictionary.zh)
+  const location = publish(probedDefinition, foldEvents(probedDefinition, GOLDEN_EVENTS))
+  const vnode = probedComponent({ turn: createTurn(7, location.value), t: probedT })
+  assert.equal(
+    vnode.props.children,
+    '本轮 · skill: dsh-client-ui-ux ｜ 插件: probe-plugin ｜ 工具: read×2, grep×1',
+  )
+})
+
 test('skill 参数 JSON 非法：计数照加，记为未识别，不记名', () => {
   const state = foldEvents(definition, [
     turnStart(1, 1),
@@ -116,6 +148,71 @@ test('skill 参数 JSON 非法：计数照加，记为未识别，不记名', ()
   assert.equal(state.skillCallCount, 1)
   assert.equal(state.unreadableSkillCalls, 1)
   assert.deepEqual(state.skillNames, [])
+})
+
+/**
+ * The exact folded state every unreadable `skill` call must produce.
+ * @param {number} turn - turn number.
+ * @returns {object} the expected state.
+ */
+function unreadableSkillState(turn) {
+  return {
+    turn,
+    startSeq: 1,
+    skillCallCount: 1,
+    skillNames: [],
+    unreadableSkillCalls: 1,
+    toolCounts: [],
+  }
+}
+
+/** Malformed `skill` arguments: each one must be counted, never named. */
+const MALFORMED_SKILL_ARGUMENTS = [
+  { title: 'name 不是字符串', payload: '{"name":123}' },
+  { title: '没有 name 键', payload: '{"foo":"bar"}' },
+  { title: '顶层是数组', payload: '["a"]' },
+  { title: 'name 全是空白', payload: '{"name":"   "}' },
+  { title: '顶层不是对象', payload: '123' },
+  { title: '顶层是 null', payload: 'null' },
+]
+
+for (const { title, payload } of MALFORMED_SKILL_ARGUMENTS) {
+  test(`skill 参数畸形（${title}）：计数照加、记为未识别、不记假名`, () => {
+    const state = foldEvents(definition, [
+      turnStart(1, 1),
+      toolCall(1, 2, 'skill', payload),
+    ])
+    assert.deepEqual(state, unreadableSkillState(1))
+    assert.equal(state.skillCallCount, 1)
+    assert.equal(state.unreadableSkillCalls, 1)
+    assert.deepEqual(state.skillNames, [])
+  })
+}
+
+test('skill 参数合法（正向对照）：名字被记下、不可读计数为 0', () => {
+  const state = foldEvents(definition, [
+    turnStart(1, 1),
+    toolCall(1, 2, 'skill', JSON.stringify({ name: 'ok-skill' })),
+  ])
+  assert.deepEqual(state, {
+    turn: 1,
+    startSeq: 1,
+    skillCallCount: 1,
+    skillNames: ['ok-skill'],
+    unreadableSkillCalls: 0,
+    toolCounts: [],
+  })
+})
+
+test('合法与畸形参数混在一起：各记各的，畸形的不污染名字列表', () => {
+  const state = foldEvents(definition, [
+    turnStart(1, 1),
+    toolCall(1, 2, 'skill', JSON.stringify({ name: 'ok-skill' })),
+    toolCall(1, 3, 'skill', '{"name":123}'),
+  ])
+  assert.equal(state.skillCallCount, 2)
+  assert.equal(state.unreadableSkillCalls, 1)
+  assert.deepEqual(state.skillNames, ['ok-skill'])
 })
 
 test('skill 参数超过 4096 字符：整条记为未识别', () => {

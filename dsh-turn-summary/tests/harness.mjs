@@ -6,7 +6,13 @@
  * client context, so every assertion runs against shipped bytes instead of a
  * re-implementation of the fold.
  *
- * No npm dependency, no network, no build step: `node --test dsh-turn-summary/tests/`.
+ * No npm dependency, no network, no build step. Run it from the repository root:
+ *
+ *   node --test "dsh-turn-summary/tests/*.test.mjs"
+ *
+ * Do NOT pass the directory: Node >= 22 treats a positional argument to
+ * `--test` as a glob pattern and no longer walks directories, so
+ * `node --test dsh-turn-summary/tests/` fails with "Cannot find module".
  */
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -17,6 +23,9 @@ export const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 /** Absolute path of the published browser artifact under test. */
 export const CLIENT_ARTIFACT = join(PACKAGE_ROOT, 'lib', 'client.js')
+
+/** The published browser artifact's source text, exactly as it ships. */
+export const CLIENT_ARTIFACT_SOURCE = readFileSync(CLIENT_ARTIFACT, 'utf8')
 
 /** The hashed CSS-module class the shipped artifact assigns to the summary row. */
 export const CSS_ROOT_CLASS = 'vqEcJa_root'
@@ -109,10 +118,15 @@ export function createContextStub() {
 /**
  * Load the published artifact, run its `apply` against a fake context, and
  * hand every recording back to the test.
+ *
+ * The optional `source` lets a test evaluate a *copy* of the shipped bytes
+ * with one seam swapped (for example a different tool-owner resolver). The
+ * file on disk is never written to; only the text handed to this function
+ * changes.
+ * @param {string} [source] - artifact source to evaluate; defaults to the published file.
  * @returns {object} artifact, exports, context and DOM recordings.
  */
-export function loadArtifact() {
-  const source = readFileSync(CLIENT_ARTIFACT, 'utf8')
+export function loadArtifact(source = CLIENT_ARTIFACT_SOURCE) {
   const registrations = []
   const requested = []
   const react = createReactStub()

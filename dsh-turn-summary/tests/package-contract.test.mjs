@@ -196,3 +196,26 @@ test('lib/index.js 是 host 半部：只导出空 apply', () => {
   assert.match(text, /function apply\(\) \{\}/)
   assert.match(text, /export \{ apply \};/)
 })
+
+test('产物里 pluginNames 由 pluginNamesOf() 求出，不是硬编码的空数组', () => {
+  const text = readFileSync(join(PACKAGE_ROOT, 'lib', 'client.js'), 'utf8')
+  const toTurnSummaryAt = text.indexOf('function toTurnSummary(')
+  assert.ok(toTurnSummaryAt >= 0, '产物里找不到 toTurnSummary')
+  const assignAt = text.indexOf('pluginNames:', toTurnSummaryAt)
+  assert.ok(assignAt >= 0, 'toTurnSummary 里找不到 pluginNames 赋值')
+  const value = text.slice(assignAt + 'pluginNames:'.length).split('\n')[0].trim().replace(/,$/, '')
+  assert.equal(value, 'pluginNamesOf(state, owners)')
+  assert.ok(text.includes('function pluginNamesOf(state, owners)'), '产物里找不到 pluginNamesOf 的定义')
+})
+
+test('产物里没有 foldTurnSummaryWindow：上游 tree-shaking 已把它剔出运行路径', () => {
+  const text = readFileSync(join(PACKAGE_ROOT, 'lib', 'client.js'), 'utf8')
+  assert.ok(!text.includes('foldTurnSummaryWindow'))
+})
+
+test('源码快照仍保留 foldTurnSummaryWindow：src/ 是上游完整源码的镜像，不是用到的代码清单', () => {
+  const source = readFileSync(join(PACKAGE_ROOT, 'src', 'client', 'summary-fold.ts'), 'utf8')
+  assert.ok(source.includes('export function foldTurnSummaryWindow('))
+  const map = JSON.parse(readFileSync(join(PACKAGE_ROOT, 'lib', 'client.js.map'), 'utf8'))
+  assert.ok(map.sourcesContent.join('\n').includes('foldTurnSummaryWindow'))
+})
