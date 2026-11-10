@@ -17,3 +17,5 @@ jobs:
           node-version: '22'
       - name: dsh-turn-summary 回归测试（node:test，零依赖）
         run: node --test "dsh-turn-summary/tests/*.test.mjs"
+      - name: 产物与源码快照不得漂移
+        run: git diff --exit-code -- dsh-turn-summary/lib dsh-turn-summary/src
