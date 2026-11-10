@@ -108,7 +108,13 @@
 
 ## 6. `foldTurnSummaryWindow(events, { fromSeq = 0, owners })`
 
-回放一段事件窗口的公开工具（插件运行时未使用）。
+回放一段事件窗口的公开工具。
+
+> **运行时不使用（上游 tree-shaking）。** 插件的运行路径是「Conversation Definition 逐事件折叠」（§3、§7），**不经过** `foldTurnSummaryWindow`——上游打包时它因无人引用而被 tree-shaking 剔除了，所以 `lib/client.js` 里**搜不到** `foldTurnSummaryWindow` 这个标识符（回归测试对这一点有硬断言：`tests/package-contract.test.mjs`）。
+>
+> 它之所以仍留在 `src/client/summary-fold.ts` 的快照里，是为了让 `src/` 保持**上游的完整源码形态**（`sourcesContent` 逐字节等于上游文件，§15.2）：快照是「上游源码的镜像」，不是「本仓库实际用到的代码清单」。删掉它就等于篡改上游源码，漂移守卫（map 里的 `sourcesContent` ↔ 磁盘 `src/`）会立刻变红。
+>
+> 换句话说：**它是死代码，但必须原样保留**。下面的行为规格照样写清楚（供将来 Host 侧回放窗口时直接用），只是当前浏览器半部用不到。
 
 | # | 规则 | 行为 |
 |---|---|---|
@@ -259,7 +265,7 @@ rendered  = <div class="vqEcJa_root" data-turn-summary="7" data-turn-summary-ski
                   data-turn-summary-tool-calls="3">本轮 · skill: dsh-client-ui-ux ｜ 工具: read×2, grep×1</div>
 ```
 
-对应的回归用例：`dsh-turn-summary/tests/turn-summary-behavior.test.mjs`（黄金输出 / 折叠行为 / 边界）与 `dsh-turn-summary/tests/bundle-contract.test.mjs`（产物契约 / 装配三件事）。
+对应的回归用例：`dsh-turn-summary/tests/turn-summary-behavior.test.mjs`（黄金输出 / 折叠行为 / 边界）、`dsh-turn-summary/tests/bundle-contract.test.mjs`（产物契约 / 装配三件事）与 `dsh-turn-summary/tests/package-contract.test.mjs`（包契约 / 漂移守卫 / 产物字节级契约）。
 
 ---
 
@@ -268,6 +274,8 @@ rendered  = <div class="vqEcJa_root" data-turn-summary="7" data-turn-summary-ski
 - `src/` 是上游 TypeScript 源码的**逐字节快照**，本仓库**不含构建链**：改逻辑要回上游改 TS → 重建 → 搬运 `lib/` → 提交。
 - 线上以 `lib/` 为准；语义以本文为准。
 - `lib/client.js.map` 内嵌的 `sourcesContent` 必须与 `src/client/*` **逐字节一致**（回归测试里的漂移守卫）；`sources` 已改写为 `../src/client/*`。
+- 产物级契约同样有硬断言：`pluginNames` 必须由 `pluginNamesOf()` 求出（不得硬编码成 `[]`）；产物里不得出现 `foldTurnSummaryWindow`（上游 tree-shaking 已把它剔出运行路径，见 §6）；`src/` 快照里则**必须**保留它。
+- CI 的漂移闸门只挡"工作区被误改"，挡不住"改了 `src/` 却没回上游重建产物"——那半边靠漂移守卫用例，处置顺序见 §15.6。
 
 ---
 
@@ -400,5 +408,26 @@ git diff --exit-code -- dsh-turn-summary/lib dsh-turn-summary/src
 ```
 
 它保证**入库的产物与源码快照**在工作区没有被意外改动——包括"有人手工编辑了 `lib/`"或"换行符被工具改写"这类不会触发任何逻辑测试、却会破坏可复现性的改动。
+
+### 15.6 这道闸门的边界：它防"误改"，防不了"漏重建"
+
+闸门是**工作区比对**（`git diff`），不是**语义比对**。所以它的能力边界必须说清楚：
+
+| 场景 | 闸门拦得住吗 | 原因 |
+|---|---|---|
+| 有人手工编辑了 `lib/client.js` 的某个字节，但没提交 | ✅ 拦得住 | 闸门在测试之后比对工作区与 `HEAD`，任何未提交的改动都会让 diff 非空 |
+| 换行符被某个工具从 LF 改写成 CRLF | ✅ 拦得住 | 同上（另有一条 `.gitattributes` 从源头防住，§15.3） |
+| 有人改了 `src/client/summary-fold.ts` 的逻辑，但**没回上游重建** `lib/client.js`，而且两边都提交了 | ❌ **拦不住** | 工作区是干净的，diff 为空；闸门看不到"源码比产物新"这件事 |
+
+最后一行是这道闸门**唯一**的结构性盲区，兜住它的是**漂移守卫用例**（§15.2）而不是闸门本身：产物 map 里的 `sourcesContent` 还是旧产物对应的旧源码，与磁盘上的新 `src/` 不再逐字节相等，用例先红。
+
+所以正确的处置顺序永远是这四步：
+
+1. **改逻辑必须回上游**：在上游 `deepseek-ai/deepseek-harness` 改 TypeScript → 重建产物；
+2. **搬运**：把重建出的 `lib/client.js` / `lib/client.js.map` 搬进本仓库（只改 `sources` 与第 8 行的 `\0dsh-css:` 注释，见 §15.1 / §15.4），并同步 `src/` 快照；
+3. **跑测试**：漂移守卫核对 `sourcesContent` 与磁盘 `src/` 逐字节一致；
+4. **提交**：CI 的闸门此时只负责最后一道"工作区没被顺手改脏"的兜底。
+
+> 一句话：**闸门防的是"误改"，防不了"漏重建"；防不了的那一半，靠的是"改 `src/` 必须同时回上游重建并搬运 `lib/`"这条人工约定 + 漂移守卫用例。** 本仓库不含构建链（§13），这条约定无法用脚本自动化——它就是 §13「维护约定」要反复强调的原因。
 
 > 总结：**`sources` 指向仓库内 → `sourcesContent` 与磁盘逐字节相同 → 换行符统一为 LF → 产物零绝对路径 → CI 兜底**。五条缺一不可。
