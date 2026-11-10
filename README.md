@@ -83,7 +83,7 @@ ln -sfn ../dsh-turn-summary ~/.dsh/profiles/desktop/node_modules/dsh-turn-summar
 
 ### 开发
 
-- 行为规格（唯一权威）：`docs/dsh-turn-summary 原理与业务流程.md`
+- 原理与业务流程（唯一权威）：`docs/dsh-turn-summary 原理与业务流程.md`
 - 回归测试（零依赖，无需安装）：`node --test "dsh-turn-summary/tests/*.test.mjs"`（从仓库根；Node ≥ 22 也可直接 `node --test`）——注意 Node ≥ 22 的 `--test` 把位置参数当 glob 模式处理、不再递归目录，所以不要写成 `node --test dsh-turn-summary/tests/`
 - 产物入库约定：`src/` 是上游 TypeScript 源码快照、本仓库不含构建链；改逻辑要回上游改 TS → 重建 → 搬运 `lib/` → 提交，`lib/client.js` 与 `lib/client.js.map` 随仓库入库
 - 上游出处：`deepseek-ai/deepseek-harness` 的 `packages/client/ui-turn-summary`，提交号 `2094ced757` / `4cd87dc33c`
