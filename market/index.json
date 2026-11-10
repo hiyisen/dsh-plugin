@@ -51,7 +51,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/hiyisen/dsh-plugin",
-            "commit": "e5690ea9364054eed4adb93553a8532b5a88b73b",
+            "commit": "5d42bca1bc302fe72f19ee689cda41cc571e0fd4",
             "path": "dsh-turn-summary"
           }
         }

@@ -7,10 +7,14 @@
 #   --category-title-en "..."   分类英文标题（缺省用内置表）
 #   --category-title-zh "..."   分类中文标题（缺省用内置表）
 #   --keywords "a,b,c"          关键词，逗号分隔（缺省用插件名派生）
+#   --refresh-commit            把既有条目的 source.commit 刷新到当前 HEAD
 #   --no-commit                 只改文件，不提交
 #
 # 幂等：重复执行不会产生重复条目，也不会产生重复版本。
 # 增量：既有条目与既有分类一个字节都不动——写入走文本级插入，不整体重排 JSON。
+#
+# --refresh-commit 是显式开关：只有带上它才会改写既有条目的 source.commit；
+# 不带这个参数时脚本行为与之前完全一致（同样幂等、同样不碰既有条目的字节）。
 #
 # 与 publish.sh 的分工（**有意不同，不是疏漏，勿"顺手统一"**）：
 #   · publish.sh  是既有脚本的泛化，硬指标是「对 dsh-downloader 无参执行与改造前逐行等价」，
@@ -22,7 +26,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 usage() {
-  echo "用法: scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [--en-description \"...\"] [--zh-description \"...\"] [--category-title-en \"...\"] [--category-title-zh \"...\"] [--keywords \"a,b,c\"] [--no-commit]" >&2
+  echo "用法: scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [--en-description \"...\"] [--zh-description \"...\"] [--category-title-en \"...\"] [--category-title-zh \"...\"] [--keywords \"a,b,c\"] [--refresh-commit] [--no-commit]" >&2
   exit 1
 }
 
@@ -34,6 +38,7 @@ ZH_DESCRIPTION=""
 CATEGORY_TITLE_EN=""
 CATEGORY_TITLE_ZH=""
 KEYWORDS=""
+REFRESH_COMMIT=0
 DO_COMMIT=1
 
 while [[ $# -gt 0 ]]; do
@@ -43,6 +48,7 @@ while [[ $# -gt 0 ]]; do
     --category-title-en) CATEGORY_TITLE_EN="${2:-}"; shift 2 ;;
     --category-title-zh) CATEGORY_TITLE_ZH="${2:-}"; shift 2 ;;
     --keywords) KEYWORDS="${2:-}"; shift 2 ;;
+    --refresh-commit) REFRESH_COMMIT=1; shift ;;
     --no-commit) DO_COMMIT=0; shift ;;
     *) echo "未知参数: $1" >&2; usage ;;
   esac
@@ -55,16 +61,17 @@ PKG_NAME=$(python3 -c "import json;print(json.load(open('$PKG_JSON'))['name'])")
 COMMIT=$(git rev-parse HEAD)
 TS=$(git log -1 --format=%ct)
 
-python3 - "$DIR" "$ZH_TITLE" "$EN_TITLE" "$CATEGORY" "$EN_DESCRIPTION" "$ZH_DESCRIPTION" \
-  "$CATEGORY_TITLE_EN" "$CATEGORY_TITLE_ZH" "$KEYWORDS" "$COMMIT" "$TS" <<'PYEOF'
+PY_OUTPUT=$(python3 - "$DIR" "$ZH_TITLE" "$EN_TITLE" "$CATEGORY" "$EN_DESCRIPTION" "$ZH_DESCRIPTION" \
+  "$CATEGORY_TITLE_EN" "$CATEGORY_TITLE_ZH" "$KEYWORDS" "$COMMIT" "$TS" "$REFRESH_COMMIT" <<'PYEOF'
 import json
 import os
 import re
 import sys
 
 (plugin_dir, zh_title, en_title, category, en_description, zh_description,
- category_title_en, category_title_zh, keywords, commit, timestamp) = sys.argv[1:12]
+ category_title_en, category_title_zh, keywords, commit, timestamp, refresh_commit) = sys.argv[1:13]
 timestamp = int(timestamp)
+refresh_commit = refresh_commit == '1'
 
 INDEX = 'market/index.json'
 REPO_URL = 'https://github.com/hiyisen/dsh-plugin'
@@ -257,6 +264,29 @@ def render_plugin_lines(entry, indent):
     return lines
 
 
+def refresh_source_commits(entry_text, commit):
+    """Rewrite every "commit" value inside one plugin entry's versions.
+
+    Text-level rewrite: only the commit hash changes, every other byte of the
+    entry (and of the rest of the index) stays exactly as it was.
+    @param entry_text - the plugin entry's source text.
+    @param commit - the commit hash to write.
+    @returns (text, changed) - the rewritten text and whether anything changed.
+    """
+    pattern = re.compile(r'("commit"\s*:\s*")([0-9a-fA-F]{7,64})(")')
+    changed = False
+
+    def replace(match):
+        """Swap one commit hash, remembering whether the entry moved."""
+        nonlocal changed
+        if match.group(2) == commit:
+            return match.group(0)
+        changed = True
+        return match.group(1) + commit + match.group(3)
+
+    return pattern.sub(replace, entry_text), changed
+
+
 with open(INDEX, encoding='utf-8', newline='') as handle:
     text = handle.read()
 eol = '\r\n' if '\r\n' in text else '\n'
@@ -321,8 +351,20 @@ if existing is None:
     lines = render_plugin_lines(entry, indent)
     text = insert_into_block(text, plugin_open, plugin_close, lines, eol)
     print('插件条目 %s 已创建（v%s @ %s）' % (name, version, commit[:8]))
+    action = 'created'
 else:
     start, end, item = existing
+    entry_text = text[start:end]
+    moved = False
+    appended = False
+    if refresh_commit:
+        entry_text, moved = refresh_source_commits(entry_text, commit)
+        if moved:
+            text = text[:start] + entry_text + text[end:]
+            item = json.loads(text[start:end])
+            print('插件条目 %s 的 source.commit 已刷新到 %s' % (name, commit[:8]))
+        else:
+            print('插件条目 %s 的 source.commit 已是 %s —— 无需刷新' % (name, commit[:8]))
     if any(entry['version'] == version for entry in item['versions']):
         print('插件条目 %s 已存在，且已含 v%s —— 无需更新' % (name, version))
     else:
@@ -337,7 +379,16 @@ else:
         }, indent)
         updated = insert_into_block(entry_text, versions_open, versions_close, lines, eol)
         text = text[:start] + updated + text[end:]
+        appended = True
         print('插件条目 %s 已存在，追加 v%s' % (name, version))
+    if moved and appended:
+        action = 'updated'
+    elif moved:
+        action = 'refreshed'
+    elif appended:
+        action = 'updated'
+    else:
+        action = 'unchanged'
 
 check = json.loads(text)
 names = [plugin['name'] for plugin in check['plugins']]
@@ -350,7 +401,12 @@ with open(INDEX, 'w', encoding='utf-8', newline='') as handle:
     handle.write(text)
 
 print('校验通过：categories=%s plugins=%s' % (list(check['metadata']['categories']), names))
+print('ACTION=%s' % action)
 PYEOF
+)
+
+echo "$PY_OUTPUT"
+ACTION=$(printf '%s\n' "$PY_OUTPUT" | sed -n 's/^ACTION=//p' | tail -n 1)
 
 if git diff --quiet -- market/index.json; then
   echo "market/index.json 无变化（无需提交）"
@@ -361,8 +417,14 @@ git add market/index.json
 echo "--- market/index.json 待提交变更 ---"
 git diff --cached -- market/index.json
 
+case "$ACTION" in
+  created) COMMIT_MESSAGE="feat(market): 新增插件条目 $PKG_NAME" ;;
+  refreshed) COMMIT_MESSAGE="chore(market): 刷新插件条目 $PKG_NAME 的 source.commit" ;;
+  *) COMMIT_MESSAGE="chore(market): 更新插件条目 $PKG_NAME" ;;
+esac
+
 if [[ "$DO_COMMIT" == "1" ]]; then
-  git commit -m "feat(market): 新增插件条目 $PKG_NAME"
+  git commit -m "$COMMIT_MESSAGE"
   echo "已提交（未 push）。请复核上面的 diff。"
 else
   git reset -q -- market/index.json
