@@ -1,25 +1,56 @@
 {
   "format": 1,
-  "title": { "en": "hiyisen's DSH plugins", "zh-cn": "hiyisen 的 DSH 插件" },
-  "description": { "en": "Self-hosted index for hiyisen/dsh-plugin.", "zh-cn": "hiyisen/dsh-plugin 自建插件索引。" },
+  "title": {
+    "en": "hiyisen's DSH plugins",
+    "zh-cn": "hiyisen 的 DSH 插件"
+  },
+  "description": {
+    "en": "Self-hosted index for hiyisen/dsh-plugin.",
+    "zh-cn": "hiyisen/dsh-plugin 自建插件索引。"
+  },
   "metadata": {
     "categories": {
-      "media": { "title": { "en": "Media & download", "zh-cn": "媒体与下载" } },
-      "observability": { "title": { "en": "Observability", "zh-cn": "可观测性" } }
+      "media": {
+        "title": {
+          "en": "Media & download",
+          "zh-cn": "媒体与下载"
+        }
+      },
+      "observability": {
+        "title": {
+          "en": "Observability",
+          "zh-cn": "可观测性"
+        }
+      }
     }
   },
   "plugins": [
     {
       "name": "dsh-downloader",
-      "title": { "en": "Resource Downloader", "zh-cn": "资源下载" },
+      "title": {
+        "en": "Resource Downloader",
+        "zh-cn": "资源下载"
+      },
       "description": {
         "en": "Sidebar download panel: paste a link and go. Xiaohongshu notes (watermark-free originals), Douyin images/videos (in-page signed bridge), HLS/m3u8, and everything yt-dlp supports. Progress, preview, reveal-in-folder.",
         "zh-cn": "左栏下载面板：粘贴链接即下。小红书图文（无水印原图）、抖音图文/视频（浏览器签名桥接）、HLS/m3u8 流媒体、yt-dlp 全平台兜底。带进度、在线预览、打开所在文件夹。"
       },
       "author": "hiyisen",
       "homepage": "https://github.com/hiyisen/dsh-plugin",
-      "repository": { "url": "https://github.com/hiyisen/dsh-plugin", "directory": "dsh-downloader" },
-      "metadata": { "category": "media", "keywords": ["download", "yt-dlp", "xiaohongshu", "douyin", "hls"] },
+      "repository": {
+        "url": "https://github.com/hiyisen/dsh-plugin",
+        "directory": "dsh-downloader"
+      },
+      "metadata": {
+        "category": "media",
+        "keywords": [
+          "download",
+          "yt-dlp",
+          "xiaohongshu",
+          "douyin",
+          "hls"
+        ]
+      },
       "versions": [
         {
           "version": "0.3.3",
@@ -35,15 +66,30 @@
     },
     {
       "name": "dsh-turn-summary",
-      "title": { "en": "Turn Summary", "zh-cn": "本轮摘要" },
+      "title": {
+        "en": "Turn Summary",
+        "zh-cn": "本轮摘要"
+      },
       "description": {
         "en": "A fixed one-line summary under every completed reply: which skills this turn loaded and how many times each tool was called. Folded entirely in the browser from events the client already received — no model request, no token cost, no session-log writes. Missing items are spelled out as 「无」. Same artifact as 0.2.2-rc.1 already installed locally; upgrading does not change what the line shows.",
         "zh-cn": "每轮回复末尾固定一行摘要：本轮加载了哪些 skill、各工具调用了几次。完全由浏览器折叠客户端已收到的事件得到——不请求模型、不消耗 token、不写会话日志；没有的项明确写「无」。本版本与已装机的 0.2.2-rc.1 产物一致，升级不会改变显示效果。"
       },
       "author": "hiyisen",
       "homepage": "https://github.com/hiyisen/dsh-turn-summary",
-      "repository": { "url": "https://github.com/hiyisen/dsh-turn-summary" },
-      "metadata": { "category": "observability", "keywords": ["turn-summary", "summary", "tool-usage", "skill", "observability", "zero-token"] },
+      "repository": {
+        "url": "https://github.com/hiyisen/dsh-turn-summary"
+      },
+      "metadata": {
+        "category": "observability",
+        "keywords": [
+          "turn-summary",
+          "summary",
+          "tool-usage",
+          "skill",
+          "observability",
+          "zero-token"
+        ]
+      },
       "versions": [
         {
           "version": "1.0.0",
@@ -52,6 +98,15 @@
             "type": "git",
             "url": "https://github.com/hiyisen/dsh-turn-summary",
             "commit": "a66becd325b4a53f9b80baac58bc116fb6e9f082"
+          }
+        },
+        {
+          "version": "1.0.1",
+          "publishTimestamp": 1794370190,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/hiyisen/dsh-turn-summary",
+            "commit": "97cdde32afc0fa566b0b238fa58057b9333d7add"
           }
         }
       ]
