@@ -7,6 +7,9 @@
 #   --category-title-en "..."   分类英文标题（缺省用内置表）
 #   --category-title-zh "..."   分类中文标题（缺省用内置表）
 #   --keywords "a,b,c"          关键词，逗号分隔（缺省用插件名派生）
+#   --repo-url "https://github.com/..."  安装源仓库（缺省为本合集仓库）
+#   --source-path "path"         仓库内子路径；传空字符串表示插件在仓库根目录
+#   --source-commit "<sha>"      安装源 commit（外部仓库发布时使用）
 #   --refresh-commit            把既有条目的 source.commit 刷新到当前 HEAD
 #   --update-description        用 --zh-description / --en-description 的完整文本
 #                               改写既有条目的描述（不带此参数时不碰既有描述）
@@ -35,7 +38,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 usage() {
-  echo "用法: scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [--en-description \"...\"] [--zh-description \"...\"] [--category-title-en \"...\"] [--category-title-zh \"...\"] [--keywords \"a,b,c\"] [--refresh-commit] [--update-description] [--no-commit]" >&2
+  echo "用法: scripts/market-add.sh <插件目录> <中文标题> <英文标题> <分类键> [--repo-url URL] [--source-path PATH] [--source-commit SHA] [--en-description \"...\"] [--zh-description \"...\"] [--category-title-en \"...\"] [--category-title-zh \"...\"] [--keywords \"a,b,c\"] [--refresh-commit] [--update-description] [--no-commit]" >&2
   exit 1
 }
 
@@ -50,6 +53,9 @@ KEYWORDS=""
 REFRESH_COMMIT=0
 UPDATE_DESCRIPTION=0
 DO_COMMIT=1
+REPO_URL="https://github.com/hiyisen/dsh-plugin"
+SOURCE_PATH="$DIR"
+SOURCE_COMMIT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -58,6 +64,9 @@ while [[ $# -gt 0 ]]; do
     --category-title-en) CATEGORY_TITLE_EN="${2:-}"; shift 2 ;;
     --category-title-zh) CATEGORY_TITLE_ZH="${2:-}"; shift 2 ;;
     --keywords) KEYWORDS="${2:-}"; shift 2 ;;
+    --repo-url) REPO_URL="${2:-}"; shift 2 ;;
+    --source-path) SOURCE_PATH="${2:-}"; shift 2 ;;
+    --source-commit) SOURCE_COMMIT="${2:-}"; shift 2 ;;
     --refresh-commit) REFRESH_COMMIT=1; shift ;;
     --update-description) UPDATE_DESCRIPTION=1; shift ;;
     --no-commit) DO_COMMIT=0; shift ;;
@@ -74,11 +83,11 @@ PKG_JSON="$DIR/package.json"
 [[ -f "$PKG_JSON" ]] || { echo "找不到 $PKG_JSON"; exit 1; }
 
 PKG_NAME=$(python3 -c "import json;print(json.load(open('$PKG_JSON'))['name'])")
-COMMIT=$(git rev-parse HEAD)
+COMMIT="${SOURCE_COMMIT:-$(git rev-parse HEAD)}"
 TS=$(git log -1 --format=%ct)
 
 PY_OUTPUT=$(python3 - "$DIR" "$ZH_TITLE" "$EN_TITLE" "$CATEGORY" "$EN_DESCRIPTION" "$ZH_DESCRIPTION" \
-  "$CATEGORY_TITLE_EN" "$CATEGORY_TITLE_ZH" "$KEYWORDS" "$COMMIT" "$TS" "$REFRESH_COMMIT" "$UPDATE_DESCRIPTION" <<'PYEOF'
+  "$CATEGORY_TITLE_EN" "$CATEGORY_TITLE_ZH" "$KEYWORDS" "$COMMIT" "$TS" "$REFRESH_COMMIT" "$UPDATE_DESCRIPTION" "$REPO_URL" "$SOURCE_PATH" <<'PYEOF'
 import json
 import os
 import re
@@ -86,13 +95,12 @@ import sys
 
 (plugin_dir, zh_title, en_title, category, en_description, zh_description,
  category_title_en, category_title_zh, keywords, commit, timestamp, refresh_commit,
- update_description) = sys.argv[1:14]
+ update_description, repo_url, source_path) = sys.argv[1:16]
 timestamp = int(timestamp)
 refresh_commit = refresh_commit == '1'
 update_description = update_description == '1'
 
 INDEX = 'market/index.json'
-REPO_URL = 'https://github.com/hiyisen/dsh-plugin'
 DEFAULT_EN_DESCRIPTION = (
     'One fixed summary line at the end of every completed reply. Folded entirely in '
     'the browser from events the client already received — no model request, no '
@@ -244,7 +252,7 @@ def render_version_lines(version, indent):
     pad = ' ' * indent
     inner = ' ' * (indent + 2)
     source = version['source']
-    return [
+    lines = [
         pad + '{',
         '%s%s: %s,' % (inner, jstr('version'), jstr(version['version'])),
         '%s%s: %s,' % (inner, jstr('publishTimestamp'), version['publishTimestamp']),
@@ -252,10 +260,16 @@ def render_version_lines(version, indent):
         '%s  %s: %s,' % (inner, jstr('type'), jstr(source['type'])),
         '%s  %s: %s,' % (inner, jstr('url'), jstr(source['url'])),
         '%s  %s: %s,' % (inner, jstr('commit'), jstr(source['commit'])),
-        '%s  %s: %s' % (inner, jstr('path'), jstr(source['path'])),
+    ]
+    if source.get('path'):
+        lines.append('%s  %s: %s' % (inner, jstr('path'), jstr(source['path'])))
+    else:
+        lines[-1] = lines[-1].rstrip(',')
+    lines.extend([
         '%s}' % inner,
         '%s}' % pad,
-    ]
+    ])
+    return lines
 
 
 def render_plugin_lines(entry, indent):
@@ -387,13 +401,13 @@ if existing is None:
         'title': {'en': en_title, 'zh-cn': zh_title},
         'description': {'en': resolved_en, 'zh-cn': resolved_zh},
         'author': author,
-        'homepage': REPO_URL,
-        'repository': {'url': REPO_URL, 'directory': plugin_dir},
+        'homepage': repo_url,
+        'repository': {'url': repo_url, **({'directory': source_path} if source_path else {})},
         'metadata': {'category': category, 'keywords': resolved_keywords},
         'versions': [{
             'version': version,
             'publishTimestamp': timestamp,
-            'source': {'type': 'git', 'url': REPO_URL, 'commit': commit, 'path': plugin_dir},
+            'source': {'type': 'git', 'url': repo_url, 'commit': commit, **({'path': source_path} if source_path else {})},
         }],
     }
     indent = element_indent(text, plugin_open, plugin_close)
@@ -437,7 +451,7 @@ else:
         lines = render_version_lines({
             'version': version,
             'publishTimestamp': timestamp,
-            'source': {'type': 'git', 'url': REPO_URL, 'commit': commit, 'path': plugin_dir},
+            'source': {'type': 'git', 'url': repo_url, 'commit': commit, **({'path': source_path} if source_path else {})},
         }, indent)
         updated = insert_into_block(entry_text, versions_open, versions_close, lines, eol)
         text = text[:start] + updated + text[end:]

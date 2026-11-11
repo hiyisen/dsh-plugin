@@ -2,31 +2,45 @@
 # 发版脚本：在插件版本 commit 之后运行，把 market/index.json 指向该 commit 并推送。
 # 用法: ./scripts/publish.sh                 （发布 dsh-downloader，行为与原来完全一致）
 #       ./scripts/publish.sh dsh-turn-summary （发布指定插件）
+#       ./scripts/publish.sh ../dsh-turn-summary --repo-url https://github.com/hiyisen/dsh-turn-summary --source-path "" --source-commit <插件仓库 commit>
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PLUGIN_DIR="${1:-dsh-downloader}"
+if [[ $# -gt 0 ]]; then shift; fi
+REPO_URL="https://github.com/hiyisen/dsh-plugin"
+SOURCE_PATH="$PLUGIN_DIR"
+SOURCE_COMMIT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repo-url) REPO_URL="${2:-}"; shift 2 ;;
+    --source-path) SOURCE_PATH="${2:-}"; shift 2 ;;
+    --source-commit) SOURCE_COMMIT="${2:-}"; shift 2 ;;
+    *) echo "未知参数: $1"; exit 1 ;;
+  esac
+done
 PLUGIN_JSON="$PLUGIN_DIR/package.json"
 [[ -f "$PLUGIN_JSON" ]] || { echo "找不到 $PLUGIN_JSON"; exit 1; }
 
 VER=$(python3 -c "import json;print(json.load(open('$PLUGIN_JSON'))['version'])")
-COMMIT=$(git rev-parse HEAD)
+PKG_NAME=$(python3 -c "import json;print(json.load(open('$PLUGIN_JSON'))['name'])")
+COMMIT="${SOURCE_COMMIT:-$(git rev-parse HEAD)}"
 TS=$(git log -1 --format=%ct)
 EXISTING=$(python3 -c "
 import json
 idx = json.load(open('market/index.json'))
-plug = next((p for p in idx['plugins'] if p['name'] == '$PLUGIN_DIR'), None)
+plug = next((p for p in idx['plugins'] if p['name'] == '$PKG_NAME'), None)
 if plug is None:
-    raise SystemExit('market/index.json 里没有插件 $PLUGIN_DIR；先运行 scripts/market-add.sh $PLUGIN_DIR')
+    raise SystemExit('market/index.json 里没有插件 $PKG_NAME；先运行 scripts/market-add.sh $PLUGIN_DIR')
 print(','.join(v['version'] for v in plug['versions']))")
 
 if [[ ",$EXISTING," == *",$VER,"* ]]; then
   echo "market/index.json 已包含 v$VER，无需更新"; exit 0
 fi
 
-python3 - "$VER" "$COMMIT" "$TS" "$PLUGIN_DIR" <<'EOF'
+python3 - "$VER" "$COMMIT" "$TS" "$PKG_NAME" "$REPO_URL" "$SOURCE_PATH" <<'EOF'
 import json, sys
-ver, commit, ts, plugin_dir = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+ver, commit, ts, plugin_name, repo_url, source_path = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5], sys.argv[6]
 
 
 def version_key(version):
@@ -58,12 +72,14 @@ def version_key(version):
 
 p = 'market/index.json'
 idx = json.load(open(p, encoding='utf-8'))
-plug = next(p for p in idx['plugins'] if p['name'] == plugin_dir)
+plug = next(p for p in idx['plugins'] if p['name'] == plugin_name)
+source = {'type': 'git', 'url': repo_url, 'commit': commit}
+if source_path:
+    source['path'] = source_path
 plug['versions'].append({
     'version': ver,
     'publishTimestamp': ts,
-    'source': {'type': 'git', 'url': 'https://github.com/hiyisen/dsh-plugin',
-               'commit': commit, 'path': plugin_dir},
+    'source': source,
 })
 plug['versions'].sort(key=version_key, reverse=True)
 json.dump(idx, open(p, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)

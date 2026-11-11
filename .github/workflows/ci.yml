@@ -15,10 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: dsh-turn-summary 回归测试（node:test，零依赖）
-        run: node --test "dsh-turn-summary/tests/*.test.mjs"
-      - name: 产物与源码快照不得漂移
-        run: git diff --exit-code -- dsh-turn-summary/lib dsh-turn-summary/src
+      - name: 市场索引契约测试（node:test，零依赖）
+        run: node --test "tests/*.test.mjs"
       - name: 市场索引安装源可达性校验
         # 逐条把索引里的 source.commit 拉到临时仓库里 checkout 一次，
         # 确认市场安装真的能装上（发布通道换过导致 hash 失配时会在此拦下）。
